@@ -1,0 +1,25 @@
+{
+  "name": "pyomatting",
+  "version": "1.0.0",
+  "description": "A TypeScript package that uses Pyodide to run Python code",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "example": "cd examples && npm run dev"
+  },
+  "keywords": ["pyodide", "python", "typescript", "wasm"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "pyodide": "^0.26.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.5"
+  },
+  "files": [
+    "dist/**/*"
+  ]
+}

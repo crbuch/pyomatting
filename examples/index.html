@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pyomatting Demo - Closed-Form Alpha Matting</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .upload-box {
+            border: 2px dashed #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            transition: border-color 0.3s;
+        }
+        .upload-box:hover {
+            border-color: #007bff;
+        }
+        .upload-box.dragover {
+            border-color: #007bff;
+            background-color: #f8f9ff;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .upload-label {
+            display: block;
+            cursor: pointer;
+            padding: 15px;
+            background: #007bff;
+            color: white;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            transition: background-color 0.3s;
+        }
+        .upload-label:hover {
+            background: #0056b3;
+        }
+        .preview-container {
+            margin-top: 15px;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .controls {
+            text-align: center;
+            margin: 30px 0;
+        }
+        button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 0 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover:not(:disabled) {
+            background: #218838;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .results {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .result-box {
+            text-align: center;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            background: #f8f9fa;
+        }
+        .result-box h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .result-image {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .alpha-result-box {
+            background: #000 !important;
+        }
+        .alpha-result-box h3 {
+            color: #fff !important;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .hidden {
+            display: none;
+        }
+        .instructions {
+            background: #e9ecef;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .instructions ul {
+            margin-bottom: 0;
+        }
+        .instructions li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎭 Pyomatting Demo</h1>
+        <p style="text-align: center; color: #666; font-size: 18px;">
+            Closed-Form Alpha Matting using Pyodide
+        </p>
+
+        <div class="instructions">
+            <h3>Instructions:</h3>
+            <ul>
+                <li><strong>Image:</strong> Upload the source image you want to extract the foreground from</li>
+                <li><strong>Trimap:</strong> Upload a trimap where:
+                    <ul>
+                        <li>Black (0) = definitely background</li>
+                        <li>White (255) = definitely foreground</li>
+                        <li>Gray (128) = unknown region to be computed</li>
+                    </ul>
+                </li>
+                <li>Both images should have the same dimensions</li>
+                <li>The algorithm will compute an alpha matte for the unknown regions</li>
+            </ul>
+        </div>
+
+        <div class="upload-section">
+            <div class="upload-box" id="imageUploadBox">
+                <label for="imageInput" class="upload-label">📸 Choose Source Image</label>
+                <input type="file" id="imageInput" accept="image/*">
+                <p>Or drag and drop an image here</p>
+                <div class="preview-container">
+                    <img id="imagePreview" class="preview-image hidden" alt="Image preview">
+                </div>
+            </div>
+
+            <div class="upload-box" id="trimapUploadBox">
+                <label for="trimapInput" class="upload-label">🗺️ Choose Trimap</label>
+                <input type="file" id="trimapInput" accept="image/*">
+                <p>Or drag and drop a trimap here</p>
+                <div class="preview-container">
+                    <img id="trimapPreview" class="preview-image hidden" alt="Trimap preview">
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="callPyodideBtn">🚀 Test Pyodide</button>
+            <button id="processBtn" disabled>✨ Process Alpha Matting</button>
+        </div>
+
+        <div id="status" class="status hidden"></div>
+
+        <div class="results hidden" id="results">
+            <div class="result-box">
+                <h3>Original Image</h3>
+                <img id="originalResult" class="result-image" alt="Original">
+            </div>
+            <div class="result-box">
+                <h3>Trimap</h3>
+                <img id="trimapResult" class="result-image" alt="Trimap">
+            </div>
+            <div class="result-box alpha-result-box">
+                <h3>Alpha Matte</h3>
+                <img id="alphaResult" class="result-image" alt="Alpha matte result">
+            </div>
+        </div>
+
+        <!-- Canvas elements for image processing (hidden) -->
+        <canvas id="imageCanvas" style="display: none;"></canvas>
+        <canvas id="trimapCanvas" style="display: none;"></canvas>
+        <canvas id="resultCanvas" style="display: none;"></canvas>
+    </div>
+
+    <script type="module" src="/demo.ts"></script>
+</body>
+</html>
