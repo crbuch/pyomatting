@@ -4,12 +4,12 @@ import { PyodideInterface } from 'pyodide';
  */
 export declare function callPyodide(): Promise<void>;
 /**
- * Performs closed-form alpha matting on an image with a trimap
- * @param imageData - ImageData from canvas containing the source image
- * @param trimapData - ImageData from canvas containing the trimap
- * @returns ImageData containing the alpha matte
+ * Performs closed-form alpha matting on multiple images with trimaps
+ * @param imageData - Array of ImageData from canvas containing the source images
+ * @param trimapData - Array of ImageData from canvas containing the trimaps
+ * @returns Array of ImageData containing the alpha mattes
  */
-export declare function closedFormMatting(imageData: ImageData, trimapData: ImageData): Promise<ImageData>;
+export declare function closedFormMatting(imageData: ImageData[], trimapData: ImageData[]): Promise<ImageData[]>;
 /**
  * Get the Pyodide instance (useful for advanced usage)
  */

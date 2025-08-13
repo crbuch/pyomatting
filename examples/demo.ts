@@ -1,30 +1,22 @@
 import { callPyodide, closedFormMatting } from 'pyomatting';
 
 // Global variables to store uploaded images
-let sourceImage: HTMLImageElement | null = null;
-let trimapImage: HTMLImageElement | null = null;
+let sourceImages: HTMLImageElement[] = [];
+let trimapImages: HTMLImageElement[] = [];
 
 // DOM elements
 const imageInput = document.getElementById('imageInput') as HTMLInputElement;
 const trimapInput = document.getElementById('trimapInput') as HTMLInputElement;
-const imagePreview = document.getElementById('imagePreview') as HTMLImageElement;
-const trimapPreview = document.getElementById('trimapPreview') as HTMLImageElement;
+const imagePreviewContainer = document.getElementById('imagePreviewContainer') as HTMLDivElement;
+const trimapPreviewContainer = document.getElementById('trimapPreviewContainer') as HTMLDivElement;
 const callPyodideBtn = document.getElementById('callPyodideBtn') as HTMLButtonElement;
 const processBtn = document.getElementById('processBtn') as HTMLButtonElement;
 const statusDiv = document.getElementById('status') as HTMLDivElement;
 const resultsDiv = document.getElementById('results') as HTMLDivElement;
+const resultGrid = document.getElementById('resultGrid') as HTMLDivElement;
+const resultCount = document.getElementById('resultCount') as HTMLParagraphElement;
 const imageUploadBox = document.getElementById('imageUploadBox') as HTMLDivElement;
 const trimapUploadBox = document.getElementById('trimapUploadBox') as HTMLDivElement;
-
-// Canvas elements for image processing
-const imageCanvas = document.getElementById('imageCanvas') as HTMLCanvasElement;
-const trimapCanvas = document.getElementById('trimapCanvas') as HTMLCanvasElement;
-const resultCanvas = document.getElementById('resultCanvas') as HTMLCanvasElement;
-
-// Result images
-const originalResult = document.getElementById('originalResult') as HTMLImageElement;
-const trimapResult = document.getElementById('trimapResult') as HTMLImageElement;
-const alphaResult = document.getElementById('alphaResult') as HTMLImageElement;
 
 function showStatus(message: string, type: 'info' | 'success' | 'error') {
     statusDiv.textContent = message;
@@ -37,7 +29,63 @@ function hideStatus() {
 }
 
 function updateProcessButton() {
-    processBtn.disabled = !sourceImage || !trimapImage;
+    processBtn.disabled = sourceImages.length === 0 || trimapImages.length === 0 || sourceImages.length !== trimapImages.length;
+    
+    // Update status based on counts
+    if (sourceImages.length > 0 && trimapImages.length > 0) {
+        if (sourceImages.length !== trimapImages.length) {
+            showStatus(`Mismatch: ${sourceImages.length} images, ${trimapImages.length} trimaps. Counts must match.`, 'error');
+        } else {
+            showStatus(`Ready to process ${sourceImages.length} image(s)`, 'success');
+        }
+    }
+}
+
+function createPreviewElement(img: HTMLImageElement, index: number, type: 'image' | 'trimap'): HTMLDivElement {
+    const container = document.createElement('div');
+    container.className = 'preview-item';
+    
+    const preview = document.createElement('img');
+    preview.src = img.src;
+    preview.className = 'preview-image';
+    preview.alt = `${type} ${index + 1}`;
+    
+    const label = document.createElement('div');
+    label.className = 'preview-label';
+    label.textContent = `${type === 'image' ? 'Image' : 'Trimap'} ${index + 1}`;
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-btn';
+    removeBtn.textContent = '×';
+    removeBtn.onclick = () => removePreview(index, type);
+    
+    container.appendChild(preview);
+    container.appendChild(label);
+    container.appendChild(removeBtn);
+    
+    return container;
+}
+
+function removePreview(index: number, type: 'image' | 'trimap') {
+    if (type === 'image') {
+        sourceImages.splice(index, 1);
+        updatePreviews('image');
+    } else {
+        trimapImages.splice(index, 1);
+        updatePreviews('trimap');
+    }
+    updateProcessButton();
+}
+
+function updatePreviews(type: 'image' | 'trimap') {
+    const container = type === 'image' ? imagePreviewContainer : trimapPreviewContainer;
+    const images = type === 'image' ? sourceImages : trimapImages;
+    
+    container.innerHTML = '';
+    images.forEach((img, index) => {
+        const preview = createPreviewElement(img, index, type);
+        container.appendChild(preview);
+    });
 }
 
 function loadImageFromFile(file: File): Promise<HTMLImageElement> {
@@ -49,7 +97,8 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
     });
 }
 
-function imageToCanvas(img: HTMLImageElement, canvas: HTMLCanvasElement): ImageData {
+function imageToCanvas(img: HTMLImageElement): ImageData {
+    const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d')!;
     canvas.width = img.width;
     canvas.height = img.height;
@@ -57,7 +106,8 @@ function imageToCanvas(img: HTMLImageElement, canvas: HTMLCanvasElement): ImageD
     return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-function imageDataToCanvas(imageData: ImageData, canvas: HTMLCanvasElement): string {
+function imageDataToCanvas(imageData: ImageData): string {
+    const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d')!;
     canvas.width = imageData.width;
     canvas.height = imageData.height;
@@ -65,37 +115,43 @@ function imageDataToCanvas(imageData: ImageData, canvas: HTMLCanvasElement): str
     return canvas.toDataURL();
 }
 
-// File input handlers
+// File input handlers - support multiple files
 imageInput.addEventListener('change', async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (file) {
-        try {
-            sourceImage = await loadImageFromFile(file);
-            imagePreview.src = sourceImage.src;
-            imagePreview.classList.remove('hidden');
-            updateProcessButton();
-        } catch (error) {
-            showStatus('Error loading image file', 'error');
+    const files = (e.target as HTMLInputElement).files;
+    if (files) {
+        showStatus('Loading image files...', 'info');
+        for (let i = 0; i < files.length; i++) {
+            try {
+                const img = await loadImageFromFile(files[i]);
+                sourceImages.push(img);
+            } catch (error) {
+                showStatus(`Error loading image file ${i + 1}`, 'error');
+            }
         }
+        updatePreviews('image');
+        updateProcessButton();
     }
 });
 
 trimapInput.addEventListener('change', async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (file) {
-        try {
-            trimapImage = await loadImageFromFile(file);
-            trimapPreview.src = trimapImage.src;
-            trimapPreview.classList.remove('hidden');
-            updateProcessButton();
-        } catch (error) {
-            showStatus('Error loading trimap file', 'error');
+    const files = (e.target as HTMLInputElement).files;
+    if (files) {
+        showStatus('Loading trimap files...', 'info');
+        for (let i = 0; i < files.length; i++) {
+            try {
+                const img = await loadImageFromFile(files[i]);
+                trimapImages.push(img);
+            } catch (error) {
+                showStatus(`Error loading trimap file ${i + 1}`, 'error');
+            }
         }
+        updatePreviews('trimap');
+        updateProcessButton();
     }
 });
 
 // Drag and drop handlers
-function setupDragAndDrop(element: HTMLElement, input: HTMLInputElement, isTrimap: boolean = false) {
+function setupDragAndDrop(element: HTMLElement, isTrimap: boolean = false) {
     element.addEventListener('dragover', (e) => {
         e.preventDefault();
         element.classList.add('dragover');
@@ -111,32 +167,34 @@ function setupDragAndDrop(element: HTMLElement, input: HTMLInputElement, isTrima
         
         const files = e.dataTransfer?.files;
         if (files && files.length > 0) {
-            const file = files[0];
-            if (file.type.startsWith('image/')) {
-                try {
-                    const img = await loadImageFromFile(file);
-                    if (isTrimap) {
-                        trimapImage = img;
-                        trimapPreview.src = img.src;
-                        trimapPreview.classList.remove('hidden');
-                    } else {
-                        sourceImage = img;
-                        imagePreview.src = img.src;
-                        imagePreview.classList.remove('hidden');
+            showStatus(`Loading ${files.length} ${isTrimap ? 'trimap' : 'image'} file(s)...`, 'info');
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (file.type.startsWith('image/')) {
+                    try {
+                        const img = await loadImageFromFile(file);
+                        if (isTrimap) {
+                            trimapImages.push(img);
+                        } else {
+                            sourceImages.push(img);
+                        }
+                    } catch (error) {
+                        showStatus(`Error loading ${isTrimap ? 'trimap' : 'image'} file ${i + 1}`, 'error');
                     }
-                    updateProcessButton();
-                } catch (error) {
-                    showStatus(`Error loading ${isTrimap ? 'trimap' : 'image'} file`, 'error');
+                } else {
+                    showStatus(`File ${i + 1} is not an image`, 'error');
                 }
-            } else {
-                showStatus('Please drop an image file', 'error');
             }
+            
+            updatePreviews(isTrimap ? 'trimap' : 'image');
+            updateProcessButton();
         }
     });
 }
 
-setupDragAndDrop(imageUploadBox, imageInput, false);
-setupDragAndDrop(trimapUploadBox, trimapInput, true);
+setupDragAndDrop(imageUploadBox, false);
+setupDragAndDrop(trimapUploadBox, true);
 
 // Test Pyodide button
 callPyodideBtn.addEventListener('click', async () => {
@@ -156,41 +214,99 @@ callPyodideBtn.addEventListener('click', async () => {
 
 // Process matting button
 processBtn.addEventListener('click', async () => {
-    if (!sourceImage || !trimapImage) {
-        showStatus('Please upload both an image and a trimap', 'error');
+    if (sourceImages.length === 0 || trimapImages.length === 0) {
+        showStatus('Please upload both images and trimaps', 'error');
+        return;
+    }
+
+    if (sourceImages.length !== trimapImages.length) {
+        showStatus('Number of images and trimaps must match', 'error');
         return;
     }
 
     processBtn.disabled = true;
-    showStatus('🔄 Processing alpha matting... This may take a while.', 'info');
+    showStatus(`🔄 Processing ${sourceImages.length} image(s)... This may take a while.`, 'info');
 
     try {
-        // Check image dimensions
-        if (sourceImage.width !== trimapImage.width || sourceImage.height !== trimapImage.height) {
-            showStatus('Error: Image and trimap must have the same dimensions', 'error');
-            processBtn.disabled = false;
-            return;
+        // Check that all image dimensions match their corresponding trimap
+        for (let i = 0; i < sourceImages.length; i++) {
+            if (sourceImages[i].width !== trimapImages[i].width || 
+                sourceImages[i].height !== trimapImages[i].height) {
+                showStatus(`Error: Image ${i + 1} and its trimap must have the same dimensions`, 'error');
+                processBtn.disabled = false;
+                return;
+            }
         }
 
-        // Convert images to ImageData
-        const imageData = imageToCanvas(sourceImage, imageCanvas);
-        const trimapData = imageToCanvas(trimapImage, trimapCanvas);
+        // Convert all images to ImageData arrays
+        const imageDataArray: ImageData[] = sourceImages.map(img => imageToCanvas(img));
+        const trimapDataArray: ImageData[] = trimapImages.map(img => imageToCanvas(img));
 
-        console.log(`Processing images: ${imageData.width}x${imageData.height}`);
+        console.log(`Processing ${imageDataArray.length} images in batch`);
 
-        // Perform matting
-        const alphaImageData = await closedFormMatting(imageData, trimapData);
+        // Perform batch matting
+        const alphaImageDataArray = await closedFormMatting(imageDataArray, trimapDataArray);
 
         // Display results
-        originalResult.src = sourceImage.src;
-        trimapResult.src = trimapImage.src;
-        alphaResult.src = imageDataToCanvas(alphaImageData, resultCanvas);
+        resultGrid.innerHTML = '';
+        
+        for (let i = 0; i < alphaImageDataArray.length; i++) {
+            const resultContainer = document.createElement('div');
+            resultContainer.className = 'result-set';
+            
+            const resultHeader = document.createElement('h4');
+            resultHeader.textContent = `Result ${i + 1}`;
+            resultContainer.appendChild(resultHeader);
+            
+            const resultRow = document.createElement('div');
+            resultRow.className = 'result-row';
+            
+            // Original image
+            const originalBox = document.createElement('div');
+            originalBox.className = 'result-box';
+            const originalTitle = document.createElement('h5');
+            originalTitle.textContent = 'Original';
+            const originalImg = document.createElement('img');
+            originalImg.src = sourceImages[i].src;
+            originalImg.className = 'result-image';
+            originalBox.appendChild(originalTitle);
+            originalBox.appendChild(originalImg);
+            
+            // Trimap
+            const trimapBox = document.createElement('div');
+            trimapBox.className = 'result-box';
+            const trimapTitle = document.createElement('h5');
+            trimapTitle.textContent = 'Trimap';
+            const trimapImg = document.createElement('img');
+            trimapImg.src = trimapImages[i].src;
+            trimapImg.className = 'result-image';
+            trimapBox.appendChild(trimapTitle);
+            trimapBox.appendChild(trimapImg);
+            
+            // Alpha result
+            const alphaBox = document.createElement('div');
+            alphaBox.className = 'result-box alpha-result-box';
+            const alphaTitle = document.createElement('h5');
+            alphaTitle.textContent = 'Alpha Matte';
+            const alphaImg = document.createElement('img');
+            alphaImg.src = imageDataToCanvas(alphaImageDataArray[i]);
+            alphaImg.className = 'result-image';
+            alphaBox.appendChild(alphaTitle);
+            alphaBox.appendChild(alphaImg);
+            
+            resultRow.appendChild(originalBox);
+            resultRow.appendChild(trimapBox);
+            resultRow.appendChild(alphaBox);
+            resultContainer.appendChild(resultRow);
+            resultGrid.appendChild(resultContainer);
+        }
 
+        resultCount.textContent = `Processed ${alphaImageDataArray.length} image(s) successfully`;
         resultsDiv.classList.remove('hidden');
-        showStatus('✅ Alpha matting completed successfully!', 'success');
+        showStatus('✅ Batch alpha matting completed successfully!', 'success');
 
     } catch (error) {
-        console.error('Error processing matting:', error);
+        console.error('Error processing batch matting:', error);
         showStatus(`❌ Error processing matting: ${error}`, 'error');
     } finally {
         processBtn.disabled = false;
@@ -198,4 +314,8 @@ processBtn.addEventListener('click', async () => {
 });
 
 // Initialize
-console.log('Demo loaded. Upload an image and trimap to get started!');
+console.log('Batch demo loaded. Upload multiple images and trimaps to get started!');
+
+// Enable multiple file selection
+imageInput.multiple = true;
+trimapInput.multiple = true;

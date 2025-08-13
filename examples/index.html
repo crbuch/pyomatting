@@ -61,12 +61,21 @@
         }
         .preview-container {
             margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         .preview-image {
-            max-width: 100%;
-            max-height: 200px;
+            max-width: 100px;
+            max-height: 100px;
             border-radius: 5px;
             border: 1px solid #ddd;
+            object-fit: cover;
+        }
+        .image-count {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
         }
         .controls {
             text-align: center;
@@ -90,10 +99,33 @@
             background: #6c757d;
             cursor: not-allowed;
         }
-        .results {
+        .result-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .result-item {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 20px;
+            gap: 10px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            background: #f8f9fa;
+        }
+        .result-sub-box {
+            text-align: center;
+        }
+        .result-sub-box h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 14px;
+        }
+        .results {
             margin-top: 30px;
         }
         .result-box {
@@ -170,35 +202,35 @@
         <div class="instructions">
             <h3>Instructions:</h3>
             <ul>
-                <li><strong>Image:</strong> Upload the source image you want to extract the foreground from</li>
-                <li><strong>Trimap:</strong> Upload a trimap where:
+                <li><strong>Images:</strong> Upload one or more source images you want to extract the foreground from</li>
+                <li><strong>Trimaps:</strong> Upload the same number of trimaps where:
                     <ul>
                         <li>Black (0) = definitely background</li>
                         <li>White (255) = definitely foreground</li>
                         <li>Gray (128) = unknown region to be computed</li>
                     </ul>
                 </li>
-                <li>Both images should have the same dimensions</li>
-                <li>The algorithm will compute an alpha matte for the unknown regions</li>
+                <li>Each image should have a corresponding trimap with the same dimensions</li>
+                <li>The algorithm will process all images in batch and compute alpha mattes for the unknown regions</li>
             </ul>
         </div>
 
         <div class="upload-section">
             <div class="upload-box" id="imageUploadBox">
-                <label for="imageInput" class="upload-label">📸 Choose Source Image</label>
-                <input type="file" id="imageInput" accept="image/*">
-                <p>Or drag and drop an image here</p>
-                <div class="preview-container">
-                    <img id="imagePreview" class="preview-image hidden" alt="Image preview">
+                <label for="imageInput" class="upload-label">📸 Choose Source Images</label>
+                <input type="file" id="imageInput" accept="image/*" multiple>
+                <p>Or drag and drop images here (multiple files supported)</p>
+                <div class="preview-container" id="imagePreviewContainer">
+                    <!-- Image previews will be added here dynamically -->
                 </div>
             </div>
 
             <div class="upload-box" id="trimapUploadBox">
-                <label for="trimapInput" class="upload-label">🗺️ Choose Trimap</label>
-                <input type="file" id="trimapInput" accept="image/*">
-                <p>Or drag and drop a trimap here</p>
-                <div class="preview-container">
-                    <img id="trimapPreview" class="preview-image hidden" alt="Trimap preview">
+                <label for="trimapInput" class="upload-label">🗺️ Choose Trimaps</label>
+                <input type="file" id="trimapInput" accept="image/*" multiple>
+                <p>Or drag and drop trimaps here (same number as images)</p>
+                <div class="preview-container" id="trimapPreviewContainer">
+                    <!-- Trimap previews will be added here dynamically -->
                 </div>
             </div>
         </div>
@@ -211,17 +243,12 @@
         <div id="status" class="status hidden"></div>
 
         <div class="results hidden" id="results">
-            <div class="result-box">
-                <h3>Original Image</h3>
-                <img id="originalResult" class="result-image" alt="Original">
+            <div class="result-header">
+                <h3>Results</h3>
+                <p id="resultCount"></p>
             </div>
-            <div class="result-box">
-                <h3>Trimap</h3>
-                <img id="trimapResult" class="result-image" alt="Trimap">
-            </div>
-            <div class="result-box alpha-result-box">
-                <h3>Alpha Matte</h3>
-                <img id="alphaResult" class="result-image" alt="Alpha matte result">
+            <div class="result-grid" id="resultGrid">
+                <!-- Results will be added here dynamically -->
             </div>
         </div>
 

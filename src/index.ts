@@ -53,46 +53,65 @@ print("Hello World")
 }
 
 /**
- * Performs closed-form alpha matting on an image with a trimap
- * @param imageData - ImageData from canvas containing the source image
- * @param trimapData - ImageData from canvas containing the trimap
- * @returns ImageData containing the alpha matte
+ * Performs closed-form alpha matting on multiple images with trimaps
+ * @param imageData - Array of ImageData from canvas containing the source images
+ * @param trimapData - Array of ImageData from canvas containing the trimaps
+ * @returns Array of ImageData containing the alpha mattes
  */
-export async function closedFormMatting(imageData: ImageData, trimapData: ImageData): Promise<ImageData> {
+export async function closedFormMatting(imageData: ImageData[], trimapData: ImageData[]): Promise<ImageData[]> {
   try {
-    const pyodide = await initializePyodide();
-    
-    // Convert ImageData to regular JavaScript arrays
-    const imageArray = Array.from(imageData.data);
-    const trimapArray = Array.from(trimapData.data);
-    
-    // Set the image data in Python
-    pyodide.globals.set("image_data", imageArray);
-    pyodide.globals.set("trimap_data", trimapArray);
-    pyodide.globals.set("width", imageData.width);
-    pyodide.globals.set("height", imageData.height);
-    
-    // Execute the matting algorithm using the imported Python code
-    pyodide.runPython(processMattingCode);
-    
-    // Get the result back as a list
-    const alphaList = pyodide.globals.get('alpha_list');
-    
-    // Convert back to ImageData
-    const resultData = new Uint8ClampedArray(imageData.width * imageData.height * 4);
-    
-    for (let i = 0; i < imageData.width * imageData.height; i++) {
-      const alphaValue = Math.round(alphaList[i] * 255);
-      const baseIndex = i * 4;
-      
-      // Set RGB to white and alpha to the computed value
-      resultData[baseIndex] = 255;     // R
-      resultData[baseIndex + 1] = 255; // G  
-      resultData[baseIndex + 2] = 255; // B
-      resultData[baseIndex + 3] = alphaValue; // A
+    if (imageData.length !== trimapData.length) {
+      throw new Error('Number of images and trimaps must match');
     }
     
-    return new ImageData(resultData, imageData.width, imageData.height);
+    if (imageData.length === 0) {
+      throw new Error('At least one image is required');
+    }
+    
+    const pyodide = await initializePyodide();
+    
+    // Convert all ImageData to regular JavaScript arrays
+    const batchImageData = imageData.map(img => Array.from(img.data));
+    const batchTrimapData = trimapData.map(trimap => Array.from(trimap.data));
+    const batchWidths = imageData.map(img => img.width);
+    const batchHeights = imageData.map(img => img.height);
+    
+    // Set the batch data in Python
+    pyodide.globals.set("batch_image_data", batchImageData);
+    pyodide.globals.set("batch_trimap_data", batchTrimapData);
+    pyodide.globals.set("batch_widths", batchWidths);
+    pyodide.globals.set("batch_heights", batchHeights);
+    
+    // Execute the batch matting algorithm using the imported Python code
+    pyodide.runPython(processMattingCode);
+    
+    // Get the results back as a list of lists
+    const batchAlphaLists = pyodide.globals.get('batch_alpha_lists');
+    
+    // Convert back to ImageData array
+    const results: ImageData[] = [];
+    
+    for (let batchIdx = 0; batchIdx < imageData.length; batchIdx++) {
+      const alphaList = batchAlphaLists[batchIdx];
+      const width = imageData[batchIdx].width;
+      const height = imageData[batchIdx].height;
+      const resultData = new Uint8ClampedArray(width * height * 4);
+      
+      for (let i = 0; i < width * height; i++) {
+        const alphaValue = Math.round(alphaList[i] * 255);
+        const baseIndex = i * 4;
+        
+        // Set RGB to white and alpha to the computed value
+        resultData[baseIndex] = 255;     // R
+        resultData[baseIndex + 1] = 255; // G  
+        resultData[baseIndex + 2] = 255; // B
+        resultData[baseIndex + 3] = alphaValue; // A
+      }
+      
+      results.push(new ImageData(resultData, width, height));
+    }
+    
+    return results;
     
   } catch (error) {
     console.error('Error in closed-form matting:', error);
