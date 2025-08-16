@@ -1,4 +1,4 @@
-import { callPyodide, closedFormMatting } from 'pyomatting';
+import { callPyodide, closedFormMatting, MattingResult } from 'pyomatting';
 
 // Global variables to store uploaded images
 let sourceImages: HTMLImageElement[] = [];
@@ -245,12 +245,12 @@ processBtn.addEventListener('click', async () => {
         console.log(`Processing ${imageDataArray.length} images in batch`);
 
         // Perform batch matting
-        const alphaImageDataArray = await closedFormMatting(imageDataArray, trimapDataArray);
+        const rgbaResults = await closedFormMatting(imageDataArray, trimapDataArray);
 
         // Display results
         resultGrid.innerHTML = '';
         
-        for (let i = 0; i < alphaImageDataArray.length; i++) {
+        for (let i = 0; i < rgbaResults.length; i++) {
             const resultContainer = document.createElement('div');
             resultContainer.className = 'result-set';
             
@@ -283,27 +283,27 @@ processBtn.addEventListener('click', async () => {
             trimapBox.appendChild(trimapTitle);
             trimapBox.appendChild(trimapImg);
             
-            // Alpha result
-            const alphaBox = document.createElement('div');
-            alphaBox.className = 'result-box alpha-result-box';
-            const alphaTitle = document.createElement('h5');
-            alphaTitle.textContent = 'Alpha Matte';
-            const alphaImg = document.createElement('img');
-            alphaImg.src = imageDataToCanvas(alphaImageDataArray[i]);
-            alphaImg.className = 'result-image';
-            alphaBox.appendChild(alphaTitle);
-            alphaBox.appendChild(alphaImg);
+            // Result (RGBA with foreground and alpha)
+            const resultBox = document.createElement('div');
+            resultBox.className = 'result-box';
+            const resultTitle = document.createElement('h5');
+            resultTitle.textContent = 'Result (RGBA)';
+            const resultImg = document.createElement('img');
+            resultImg.src = imageDataToCanvas(rgbaResults[i]);
+            resultImg.className = 'result-image';
+            resultBox.appendChild(resultTitle);
+            resultBox.appendChild(resultImg);
             
             resultRow.appendChild(originalBox);
             resultRow.appendChild(trimapBox);
-            resultRow.appendChild(alphaBox);
+            resultRow.appendChild(resultBox);
             resultContainer.appendChild(resultRow);
             resultGrid.appendChild(resultContainer);
         }
 
-        resultCount.textContent = `Processed ${alphaImageDataArray.length} image(s) successfully`;
+        resultCount.textContent = `Processed ${rgbaResults.length} image(s) successfully`;
         resultsDiv.classList.remove('hidden');
-        showStatus('✅ Batch alpha matting completed successfully!', 'success');
+        showStatus('✅ Batch alpha matting and foreground estimation completed successfully!', 'success');
 
     } catch (error) {
         console.error('Error processing batch matting:', error);

@@ -2,6 +2,7 @@ import numpy as np
 
 # Process batch of images
 batch_alpha_lists = []
+batch_foreground_lists = []
 
 print(f"Processing batch of {len(batch_image_data)} images")
 
@@ -25,14 +26,22 @@ for batch_idx in range(len(batch_image_data)):
     try:
         alpha_result = closed_form_matting_with_trimap(image_rgb, trimap_gray)
         print(f"Image {batch_idx + 1}: Alpha result shape {alpha_result.shape}, range {alpha_result.min():.3f} to {alpha_result.max():.3f}")
+        
+        # Compute foreground estimation
+        foreground_result, _ = solve_foreground_background(image_rgb, alpha_result)
+        print(f"Image {batch_idx + 1}: Foreground result shape {foreground_result.shape}, range {foreground_result.min():.3f} to {foreground_result.max():.3f}")
+        
     except Exception as e:
         print(f"Error in matting for image {batch_idx + 1}: {e}")
         import traceback
         traceback.print_exc()
         alpha_result = trimap_gray  # Fallback to trimap
+        foreground_result = image_rgb  # Fallback to original image
 
-    # Convert result to list for JavaScript
+    # Convert results to lists for JavaScript
     alpha_list = alpha_result.flatten().tolist()
+    foreground_list = foreground_result.flatten().tolist()
     batch_alpha_lists.append(alpha_list)
+    batch_foreground_lists.append(foreground_list)
 
-print(f"Batch processing completed: {len(batch_alpha_lists)} results")
+print(f"Batch processing completed: {len(batch_alpha_lists)} alpha results and {len(batch_foreground_lists)} foreground results")

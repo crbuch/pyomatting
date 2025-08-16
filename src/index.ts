@@ -1,6 +1,7 @@
 import { loadPyodide, PyodideInterface } from 'pyodide';
 import laplacianCode from './python/laplacian.py';
 import mattingCode from './python/matting.py';
+import foregroundBackgroundCode from './python/foreground_background.py';
 import processMattingCode from './python/process_matting.py';
 
 let pyodideInstance: PyodideInterface | null = null;
@@ -25,6 +26,9 @@ async function initializePyodide(): Promise<PyodideInterface> {
     
     // Load matting algorithms  
     pyodideInstance.runPython(mattingCode);
+    
+    // Load foreground/background estimation
+    pyodideInstance.runPython(foregroundBackgroundCode);
     
     console.log('Pyodide loaded successfully!');
   }
@@ -52,11 +56,16 @@ print("Hello World")
   }
 }
 
+export interface MattingResult {
+  alpha: ImageData;
+  foreground: ImageData;
+}
+
 /**
- * Performs closed-form alpha matting on multiple images with trimaps
+ * Performs closed-form alpha matting on multiple images with trimaps and returns RGBA images
  * @param imageData - Array of ImageData from canvas containing the source images
  * @param trimapData - Array of ImageData from canvas containing the trimaps
- * @returns Array of ImageData containing the alpha mattes
+ * @returns Array of ImageData containing the RGBA result images (with foreground colors and alpha)
  */
 export async function closedFormMatting(imageData: ImageData[], trimapData: ImageData[]): Promise<ImageData[]> {
   try {
@@ -85,30 +94,34 @@ export async function closedFormMatting(imageData: ImageData[], trimapData: Imag
     // Execute the batch matting algorithm using the imported Python code
     pyodide.runPython(processMattingCode);
     
-    // Get the results back as a list of lists
+    // Get the results back as lists
     const batchAlphaLists = pyodide.globals.get('batch_alpha_lists');
+    const batchForegroundLists = pyodide.globals.get('batch_foreground_lists');
     
     // Convert back to ImageData array
     const results: ImageData[] = [];
     
     for (let batchIdx = 0; batchIdx < imageData.length; batchIdx++) {
       const alphaList = batchAlphaLists[batchIdx];
+      const foregroundList = batchForegroundLists[batchIdx];
       const width = imageData[batchIdx].width;
       const height = imageData[batchIdx].height;
-      const resultData = new Uint8ClampedArray(width * height * 4);
       
+      // Create RGBA ImageData with foreground colors and alpha
+      const rgbaData = new Uint8ClampedArray(width * height * 4);
       for (let i = 0; i < width * height; i++) {
         const alphaValue = Math.round(alphaList[i] * 255);
         const baseIndex = i * 4;
+        const fgBaseIndex = i * 3;
         
-        // Set RGB to white and alpha to the computed value
-        resultData[baseIndex] = 255;     // R
-        resultData[baseIndex + 1] = 255; // G  
-        resultData[baseIndex + 2] = 255; // B
-        resultData[baseIndex + 3] = alphaValue; // A
+        // RGB from foreground, alpha from alpha matte
+        rgbaData[baseIndex] = Math.round(foregroundList[fgBaseIndex] * 255);     // R
+        rgbaData[baseIndex + 1] = Math.round(foregroundList[fgBaseIndex + 1] * 255); // G  
+        rgbaData[baseIndex + 2] = Math.round(foregroundList[fgBaseIndex + 2] * 255); // B
+        rgbaData[baseIndex + 3] = alphaValue; // A
       }
       
-      results.push(new ImageData(resultData, width, height));
+      results.push(new ImageData(rgbaData, width, height));
     }
     
     return results;
