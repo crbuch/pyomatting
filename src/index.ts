@@ -36,32 +36,6 @@ async function initializePyodide(): Promise<PyodideInterface> {
 }
 
 /**
- * Calls Pyodide to execute Python code that prints "Hello World"
- */
-export async function callPyodide(): Promise<void> {
-  try {
-    const pyodide = await initializePyodide();
-    
-    // Python code to print "Hello World"
-    const pythonCode = `
-print("Hello World")
-    `;
-    
-    // Execute the Python code
-    pyodide.runPython(pythonCode);
-    
-  } catch (error) {
-    console.error('Error calling Pyodide:', error);
-    throw error;
-  }
-}
-
-export interface MattingResult {
-  alpha: ImageData;
-  foreground: ImageData;
-}
-
-/**
  * Performs closed-form alpha matting on multiple images with trimaps and returns RGBA images
  * @param imageData - Array of ImageData from canvas containing the source images
  * @param trimapData - Array of ImageData from canvas containing the trimaps
@@ -130,11 +104,4 @@ export async function closedFormMatting(imageData: ImageData[], trimapData: Imag
     console.error('Error in closed-form matting:', error);
     throw error;
   }
-}
-
-/**
- * Get the Pyodide instance (useful for advanced usage)
- */
-export async function getPyodideInstance(): Promise<PyodideInterface> {
-  return await initializePyodide();
 }

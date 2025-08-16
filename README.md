@@ -26,10 +26,7 @@ npm run build
 ## Usage
 
 ```typescript
-import { callPyodide, closedFormMatting } from 'pyomatting';
-
-// Test Pyodide installation
-await callPyodide();
+import { closedFormMatting } from 'pyomatting';
 
 // Perform alpha matting on ImageData from canvas
 const alphaImageData = await closedFormMatting(imageData, trimapData);
@@ -37,26 +34,18 @@ const alphaImageData = await closedFormMatting(imageData, trimapData);
 
 ## API
 
-### `callPyodide(): Promise<void>`
+### `closedFormMatting(imageData: ImageData[], trimapData: ImageData[]): Promise<ImageData[]>`
 
-Tests the Pyodide installation by printing "Hello World" from Python.
-
-### `closedFormMatting(imageData: ImageData, trimapData: ImageData): Promise<ImageData>`
-
-Performs closed-form alpha matting on an image using a trimap.
+Performs closed-form alpha matting on multiple images using trimaps.
 
 **Parameters:**
-- `imageData`: ImageData from canvas containing the source image (RGB)
-- `trimapData`: ImageData from canvas containing the trimap where:
+- `imageData`: Array of ImageData from canvas containing the source images (RGB)
+- `trimapData`: Array of ImageData from canvas containing the trimaps where:
   - Black (0) = definitely background
   - White (255) = definitely foreground  
   - Gray (128) = unknown regions to be computed
 
-**Returns:** ImageData containing the computed alpha matte
-
-### `getPyodideInstance(): Promise<PyodideInterface>`
-
-Returns the Pyodide instance for advanced usage.
+**Returns:** Array of ImageData containing the computed RGBA result images (with foreground colors and alpha)
 
 ## Example
 

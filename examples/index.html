@@ -72,6 +72,25 @@
             border: 1px solid #ddd;
             object-fit: cover;
         }
+        .preview-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .remove-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .remove-btn:hover {
+            background: #c82333;
+        }
         .image-count {
             color: #666;
             font-size: 12px;
@@ -149,10 +168,6 @@
             max-height: 300px;
             border-radius: 5px;
             border: 1px solid #ddd;
-        }
-        .alpha-result-box .result-image {
-            background: #000;
-            box-sizing: border-box;
         }
         .status {
             margin: 20px 0;
@@ -241,7 +256,6 @@
         </div>
 
         <div class="controls">
-            <button id="callPyodideBtn">🚀 Test Pyodide</button>
             <button id="processBtn" disabled>✨ Process Alpha Matting</button>
         </div>
 
@@ -256,12 +270,6 @@
                 <!-- Results will be added here dynamically -->
             </div>
         </div>
-
-        <!-- Canvas elements for image processing (hidden) -->
-        <canvas id="imageCanvas" style="display: none;"></canvas>
-        <canvas id="trimapCanvas" style="display: none;"></canvas>
-        <canvas id="resultCanvas" style="display: none;"></canvas>
-    </div>
 
     <script type="module" src="/demo.ts"></script>
 </body>

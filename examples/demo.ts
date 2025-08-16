@@ -1,4 +1,4 @@
-import { callPyodide, closedFormMatting, MattingResult } from 'pyomatting';
+import { closedFormMatting } from 'pyomatting';
 
 // Global variables to store uploaded images
 let sourceImages: HTMLImageElement[] = [];
@@ -9,7 +9,6 @@ const imageInput = document.getElementById('imageInput') as HTMLInputElement;
 const trimapInput = document.getElementById('trimapInput') as HTMLInputElement;
 const imagePreviewContainer = document.getElementById('imagePreviewContainer') as HTMLDivElement;
 const trimapPreviewContainer = document.getElementById('trimapPreviewContainer') as HTMLDivElement;
-const callPyodideBtn = document.getElementById('callPyodideBtn') as HTMLButtonElement;
 const processBtn = document.getElementById('processBtn') as HTMLButtonElement;
 const statusDiv = document.getElementById('status') as HTMLDivElement;
 const resultsDiv = document.getElementById('results') as HTMLDivElement;
@@ -195,22 +194,6 @@ function setupDragAndDrop(element: HTMLElement, isTrimap: boolean = false) {
 
 setupDragAndDrop(imageUploadBox, false);
 setupDragAndDrop(trimapUploadBox, true);
-
-// Test Pyodide button
-callPyodideBtn.addEventListener('click', async () => {
-    callPyodideBtn.disabled = true;
-    showStatus('🚀 Calling Pyodide...', 'info');
-    
-    try {
-        await callPyodide();
-        showStatus('✅ Pyodide test completed successfully!', 'success');
-    } catch (error) {
-        console.error('ERROR: Error calling Pyodide:', error);
-        showStatus(`❌ Error calling Pyodide: ${error}`, 'error');
-    } finally {
-        callPyodideBtn.disabled = false;
-    }
-});
 
 // Process matting button
 processBtn.addEventListener('click', async () => {
