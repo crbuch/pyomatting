@@ -1,7 +1,7 @@
 {
   "name": "pyomatting",
   "version": "1.0.0",
-  "description": "TypeScript package for closed-form alpha matting using Pyodide",
+  "description": "TypeScript package for closed-form alpha matting using Pyodide - bringing Python computer vision to the browser",
   "type": "module",
   "main": "dist/pyomatting.es.js",
   "module": "dist/pyomatting.es.js",
@@ -10,11 +10,34 @@
     "dev": "vite",
     "build": "vite build && tsc --emitDeclarationOnly",
     "preview": "vite preview",
-    "example": "cd examples && npm run dev"
+    "example": "cd examples && npm run dev",
+    "prepublishOnly": "npm run build"
   },
-  "keywords": ["pyodide", "python", "typescript", "wasm", "alpha-matting", "computer-vision"],
-  "author": "",
+  "keywords": [
+    "pyodide", 
+    "python", 
+    "typescript", 
+    "wasm", 
+    "alpha-matting", 
+    "computer-vision",
+    "image-processing",
+    "matting",
+    "foreground-extraction",
+    "webassembly",
+    "browser",
+    "canvas",
+    "imagedata"
+  ],
+  "author": "crbuch",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crbuch/pyomatting.git"
+  },
+  "homepage": "https://github.com/crbuch/pyomatting",
+  "bugs": {
+    "url": "https://github.com/crbuch/pyomatting/issues"
+  },
   "dependencies": {
     "pyodide": "^0.26.4"
   },
@@ -24,6 +47,11 @@
     "vite": "^5.0.0"
   },
   "files": [
-    "dist/**/*"
-  ]
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
 }

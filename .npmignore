@@ -1,0 +1,35 @@
+# Development files
+.venv/
+*.log
+.DS_Store
+Thumbs.db
+
+# Source files (only dist should be published)
+src/
+tsconfig.json
+vite.config.ts
+
+# Examples and development
+examples/
+*.md
+!README.md
+
+# Git and CI
+.git/
+.github/
+.gitignore
+
+# Development dependencies
+.npm/
+.nyc_output/
+coverage/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
