@@ -1,14 +1,18 @@
-import { closedFormMatting } from 'pyomatting';
+import { closedFormMatting, addProgressCallback, setVerboseLogging, initializePyodide } from 'pyomatting';
 
 // Global variables to store uploaded images
 let sourceImages: HTMLImageElement[] = [];
 let trimapImages: HTMLImageElement[] = [];
+
+// Enable verbose logging for development
+setVerboseLogging(true);
 
 // DOM elements
 const imageInput = document.getElementById('imageInput') as HTMLInputElement;
 const trimapInput = document.getElementById('trimapInput') as HTMLInputElement;
 const imagePreviewContainer = document.getElementById('imagePreviewContainer') as HTMLDivElement;
 const trimapPreviewContainer = document.getElementById('trimapPreviewContainer') as HTMLDivElement;
+const initBtn = document.getElementById('initBtn') as HTMLButtonElement;
 const processBtn = document.getElementById('processBtn') as HTMLButtonElement;
 const statusDiv = document.getElementById('status') as HTMLDivElement;
 const resultsDiv = document.getElementById('results') as HTMLDivElement;
@@ -16,6 +20,9 @@ const resultGrid = document.getElementById('resultGrid') as HTMLDivElement;
 const resultCount = document.getElementById('resultCount') as HTMLParagraphElement;
 const imageUploadBox = document.getElementById('imageUploadBox') as HTMLDivElement;
 const trimapUploadBox = document.getElementById('trimapUploadBox') as HTMLDivElement;
+const progressContainer = document.getElementById('progressContainer') as HTMLDivElement;
+const progressBar = document.getElementById('progressBar') as HTMLDivElement;
+const progressText = document.getElementById('progressText') as HTMLDivElement;
 
 function showStatus(message: string, type: 'info' | 'success' | 'error') {
     statusDiv.textContent = message;
@@ -25,6 +32,22 @@ function showStatus(message: string, type: 'info' | 'success' | 'error') {
 
 function hideStatus() {
     statusDiv.classList.add('hidden');
+}
+
+function showProgress(show: boolean) {
+    if (show) {
+        progressContainer.classList.remove('hidden');
+    } else {
+        progressContainer.classList.add('hidden');
+    }
+}
+
+function updateProgress(stage: string, percentage: number, message?: string) {
+    progressBar.style.width = `${percentage}%`;
+    progressBar.textContent = `${percentage}%`;
+    
+    // Use the provided message, or fallback to stage name
+    progressText.textContent = message || stage;
 }
 
 function updateProcessButton() {
@@ -195,6 +218,31 @@ function setupDragAndDrop(element: HTMLElement, isTrimap: boolean = false) {
 setupDragAndDrop(imageUploadBox, false);
 setupDragAndDrop(trimapUploadBox, true);
 
+// Pre-initialization button
+initBtn.addEventListener('click', async () => {
+    initBtn.disabled = true;
+    showProgress(true);
+    
+    try {
+        // Set up progress callback
+        addProgressCallback((stage: string, progress: number, message?: string) => {
+            updateProgress(stage, progress, message);
+            console.log(`Progress: ${stage} - ${progress}% - ${message || 'No message'}`);
+        });
+        
+        showStatus('🔄 Pre-initializing Pyodide runtime...', 'info');
+        await initializePyodide();
+        showStatus('✅ Pyodide runtime pre-initialized successfully!', 'success');
+        initBtn.textContent = '✅ Runtime Ready';
+    } catch (error) {
+        console.error('Error pre-initializing Pyodide:', error);
+        showStatus(`❌ Error pre-initializing Pyodide: ${error}`, 'error');
+        initBtn.disabled = false;
+    } finally {
+        showProgress(false);
+    }
+});
+
 // Process matting button
 processBtn.addEventListener('click', async () => {
     if (sourceImages.length === 0 || trimapImages.length === 0) {
@@ -208,7 +256,14 @@ processBtn.addEventListener('click', async () => {
     }
 
     processBtn.disabled = true;
+    showProgress(true);
     showStatus(`🔄 Processing ${sourceImages.length} image(s)... This may take a while.`, 'info');
+
+    // Set up progress callback
+    addProgressCallback((stage: string, progress: number, message?: string) => {
+        updateProgress(stage, progress, message);
+        console.log(`Progress: ${stage} - ${progress}% - ${message || 'No message'}`);
+    });
 
     try {
         // Check that all image dimensions match their corresponding trimap
@@ -217,6 +272,7 @@ processBtn.addEventListener('click', async () => {
                 sourceImages[i].height !== trimapImages[i].height) {
                 showStatus(`Error: Image ${i + 1} and its trimap must have the same dimensions`, 'error');
                 processBtn.disabled = false;
+                showProgress(false);
                 return;
             }
         }
@@ -293,6 +349,7 @@ processBtn.addEventListener('click', async () => {
         showStatus(`❌ Error processing matting: ${error}`, 'error');
     } finally {
         processBtn.disabled = false;
+        showProgress(false);
     }
 });
 

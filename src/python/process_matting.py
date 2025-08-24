@@ -4,9 +4,22 @@ import numpy as np
 batch_alpha_lists = []
 batch_foreground_lists = []
 
-print(f"Processing batch of {len(batch_image_data)} images") # type: ignore
+total_images = len(batch_image_data) # type: ignore
 
-for batch_idx in range(len(batch_image_data)): # type: ignore
+# Use logger if available, otherwise fallback to print
+def log_message(message):
+    if 'py_logger' in globals():
+        py_logger(message) # type: ignore
+    else:
+        print(message)
+
+log_message(f"Processing batch of {total_images} images")
+
+for batch_idx in range(total_images):
+    # Send progress update via JavaScript
+    if 'send_progress_callback' in globals():
+        send_progress_callback(batch_idx, total_images) # type: ignore
+    
     # Convert image data to numpy array
     image_array = np.array(batch_image_data[batch_idx], dtype=np.uint8) # type: ignore
     width = batch_widths[batch_idx] # type: ignore
@@ -20,19 +33,19 @@ for batch_idx in range(len(batch_image_data)): # type: ignore
     trimap_rgba = trimap_array.reshape((height, width, 4))
     trimap_gray = np.mean(trimap_rgba[:, :, :3], axis=2).astype(np.float32) / 255.0
 
-    print(f"Image {batch_idx + 1}: shape {image_rgb.shape}, trimap shape {trimap_gray.shape}")
+    log_message(f"Image {batch_idx + 1}: shape {image_rgb.shape}, trimap shape {trimap_gray.shape}")
 
     # Perform closed-form matting
     try:
         alpha_result = closed_form_matting_with_trimap(image_rgb, trimap_gray) # type: ignore
-        print(f"Image {batch_idx + 1}: Alpha result shape {alpha_result.shape}, range {alpha_result.min():.3f} to {alpha_result.max():.3f}")
+        log_message(f"Image {batch_idx + 1}: Alpha result shape {alpha_result.shape}, range {alpha_result.min():.3f} to {alpha_result.max():.3f}")
         
         # Compute foreground estimation
         foreground_result, _ = solve_foreground_background(image_rgb, alpha_result) # type: ignore
-        print(f"Image {batch_idx + 1}: Foreground result shape {foreground_result.shape}, range {foreground_result.min():.3f} to {foreground_result.max():.3f}")
+        log_message(f"Image {batch_idx + 1}: Foreground result shape {foreground_result.shape}, range {foreground_result.min():.3f} to {foreground_result.max():.3f}")
         
     except Exception as e:
-        print(f"Error in matting for image {batch_idx + 1}: {e}")
+        log_message(f"Error in matting for image {batch_idx + 1}: {e}")
         import traceback
         traceback.print_exc()
         alpha_result = trimap_gray  # Fallback to trimap
@@ -44,4 +57,4 @@ for batch_idx in range(len(batch_image_data)): # type: ignore
     batch_alpha_lists.append(alpha_list)
     batch_foreground_lists.append(foreground_list)
 
-print(f"Batch processing completed: {len(batch_alpha_lists)} alpha results and {len(batch_foreground_lists)} foreground results")
+log_message(f"Batch processing completed: {len(batch_alpha_lists)} alpha results and {len(batch_foreground_lists)} foreground results")

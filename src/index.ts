@@ -1,8 +1,9 @@
 // Import worker as inline module - this creates a Blob URL that works in any environment
 import PyWorker from "./pyodide.worker.ts?worker&inline&module";
+import { logger, setVerbose, getVerbose } from "./logger";
 
 interface WorkerResponse {
-  type: "matting_complete" | "matting_error" | "init_progress";
+  type: "matting_complete" | "matting_error" | "init_progress" | "processing_progress" | "init_complete";
   data?: {
     batchAlphaLists: number[][];
     batchForegroundLists: number[][];
@@ -11,8 +12,12 @@ interface WorkerResponse {
   progress?: {
     stage: string;
     message: string;
+    percentage: number;
   };
 }
+
+// Global progress callback
+let progressCallback: ((stage: string, progress: number, message?: string) => void) | null = null;
 
 // Global worker instance
 let worker: Worker | null = null;
@@ -42,9 +47,17 @@ async function processInWorker(
     const handleMessage = (evt: MessageEvent<WorkerResponse>) => {
       switch (evt.data.type) {
         case "init_progress":
-          console.log(
+          logger.log(
             `${evt.data.progress?.stage}: ${evt.data.progress?.message}`
           );
+          if (progressCallback && evt.data.progress) {
+            progressCallback(evt.data.progress.stage, evt.data.progress.percentage, evt.data.progress.message);
+          }
+          break;
+        case "processing_progress":
+          if (progressCallback && evt.data.progress) {
+            progressCallback(evt.data.progress.stage, evt.data.progress.percentage, evt.data.progress.message);
+          }
           break;
         case "matting_complete":
           worker.removeEventListener("message", handleMessage);
@@ -65,6 +78,77 @@ async function processInWorker(
       data: { imageData, trimapData, widths, heights },
     });
   });
+}
+
+/**
+ * Initialize Pyodide runtime and packages in advance
+ * This is optional - the runtime will be initialized automatically when needed,
+ * but calling this function early can reduce latency for the first processing call
+ * @returns Promise that resolves when initialization is complete
+ */
+export async function initializePyodide(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const worker = initializeWorker();
+
+    const handleMessage = (evt: MessageEvent<WorkerResponse>) => {
+      switch (evt.data.type) {
+        case "init_progress":
+          logger.log(
+            `${evt.data.progress?.stage}: ${evt.data.progress?.message}`
+          );
+          if (progressCallback && evt.data.progress) {
+            progressCallback(evt.data.progress.stage, evt.data.progress.percentage, evt.data.progress.message);
+          }
+          break;
+        case "init_complete":
+          worker.removeEventListener("message", handleMessage);
+          resolve();
+          break;
+        case "matting_error":
+          worker.removeEventListener("message", handleMessage);
+          reject(new Error(evt.data.error));
+          break;
+      }
+    };
+
+    worker.addEventListener("message", handleMessage);
+
+    // Send initialization request
+    worker.postMessage({
+      type: "initialize_only",
+    });
+  });
+}
+
+/**
+ * Add a progress callback function to receive updates during initialization and processing
+ * @param fn - Callback function that receives stage name, progress percentage (0-100), and optional message
+ */
+export function addProgressCallback(fn: (stage: string, progress: number, message?: string) => void): void {
+  progressCallback = fn;
+}
+
+/**
+ * Remove the progress callback
+ */
+export function removeProgressCallback(): void {
+  progressCallback = null;
+}
+
+/**
+ * Enable or disable verbose logging
+ * @param verbose - Whether to enable verbose logging
+ */
+export function setVerboseLogging(verbose: boolean): void {
+  setVerbose(verbose);
+}
+
+/**
+ * Check if verbose logging is enabled
+ * @returns Whether verbose logging is enabled
+ */
+export function isVerboseLogging(): boolean {
+  return getVerbose();
 }
 
 /**
@@ -92,7 +176,7 @@ export async function closedFormMatting(
     const batchWidths = imageData.map((img) => img.width);
     const batchHeights = imageData.map((img) => img.height);
 
-    console.log(
+    logger.log(
       `Processing ${imageData.length} images in batch using web worker`
     );
 
@@ -136,7 +220,7 @@ export async function closedFormMatting(
 
     return results;
   } catch (error) {
-    console.error("Error in closed-form matting:", error);
+    logger.error("Error in closed-form matting:", error);
     throw error;
   }
 }
