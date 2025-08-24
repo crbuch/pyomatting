@@ -5,3 +5,7 @@
  * @returns Array of ImageData containing the RGBA result images (with foreground colors and alpha)
  */
 export declare function closedFormMatting(imageData: ImageData[], trimapData: ImageData[]): Promise<ImageData[]>;
+/**
+ * Terminate the web worker (useful for cleanup)
+ */
+export declare function terminateWorker(): void;

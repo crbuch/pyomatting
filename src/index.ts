@@ -1,38 +1,74 @@
-import { loadPyodide, PyodideInterface } from 'pyodide';
-import laplacianCode from './python/laplacian.py';
-import mattingCode from './python/matting.py';
-import foregroundBackgroundCode from './python/foreground_background.py';
-import processMattingCode from './python/process_matting.py';
+// Import worker as inline module - this creates a Blob URL that works in any environment
+import PyWorker from './pyodide.worker.ts?worker&inline&module';
 
-let pyodideInstance: PyodideInterface | null = null;
+// Worker message types
+interface WorkerMessage {
+  type: 'process_matting';
+  data: {
+    imageData: number[][];
+    trimapData: number[][];
+    widths: number[];
+    heights: number[];
+  };
+}
+
+interface WorkerResponse {
+  type: 'matting_complete' | 'matting_error' | 'init_progress';
+  data?: {
+    batchAlphaLists: number[][];
+    batchForegroundLists: number[][];
+  };
+  error?: string;
+  progress?: {
+    stage: string;
+    message: string;
+  };
+}
+
+// Global worker instance
+let worker: Worker | null = null;
 
 /**
- * Initialize Pyodide if not already initialized
+ * Initialize the web worker if not already initialized
  */
-async function initializePyodide(): Promise<PyodideInterface> {
-  if (!pyodideInstance) {
-    console.log('Loading Pyodide...');
-    pyodideInstance = await loadPyodide({
-      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/"
-    });
-    
-    console.log('Installing required packages...');
-    await pyodideInstance.loadPackage(['numpy', 'scipy', 'opencv-python']);
-    
-    console.log('Loading Python modules...');
-    
-    // Load laplacian computation functions
-    pyodideInstance.runPython(laplacianCode);
-    
-    // Load matting algorithms  
-    pyodideInstance.runPython(mattingCode);
-    
-    // Load foreground/background estimation
-    pyodideInstance.runPython(foregroundBackgroundCode);
-    
-    console.log('Pyodide loaded successfully!');
+function initializeWorker(): Worker {
+  if (!worker) {
+    worker = new PyWorker(); // Worker is already module-type from &module
   }
-  return pyodideInstance;
+  return worker!; // We know it's not null after the check above
+}
+
+/**
+ * Process matting in web worker and wait for initialization if needed
+ */
+async function processInWorker(imageData: number[][], trimapData: number[][], widths: number[], heights: number[]): Promise<{ batchAlphaLists: number[][], batchForegroundLists: number[][] }> {
+  return new Promise((resolve, reject) => {
+    const worker = initializeWorker();
+    
+    const handleMessage = (evt: MessageEvent<WorkerResponse>) => {
+      switch (evt.data.type) {
+        case 'init_progress':
+          console.log(`${evt.data.progress?.stage}: ${evt.data.progress?.message}`);
+          break;
+        case 'matting_complete':
+          worker.removeEventListener('message', handleMessage);
+          resolve(evt.data.data!);
+          break;
+        case 'matting_error':
+          worker.removeEventListener('message', handleMessage);
+          reject(new Error(evt.data.error));
+          break;
+      }
+    };
+    
+    worker.addEventListener('message', handleMessage);
+    
+    // Send processing request
+    worker.postMessage({
+      type: 'process_matting',
+      data: { imageData, trimapData, widths, heights }
+    } as WorkerMessage);
+  });
 }
 
 /**
@@ -51,26 +87,21 @@ export async function closedFormMatting(imageData: ImageData[], trimapData: Imag
       throw new Error('At least one image is required');
     }
     
-    const pyodide = await initializePyodide();
-    
     // Convert all ImageData to regular JavaScript arrays
     const batchImageData = imageData.map(img => Array.from(img.data));
     const batchTrimapData = trimapData.map(trimap => Array.from(trimap.data));
     const batchWidths = imageData.map(img => img.width);
     const batchHeights = imageData.map(img => img.height);
     
-    // Set the batch data in Python
-    pyodide.globals.set("batch_image_data", batchImageData);
-    pyodide.globals.set("batch_trimap_data", batchTrimapData);
-    pyodide.globals.set("batch_widths", batchWidths);
-    pyodide.globals.set("batch_heights", batchHeights);
-    
-    // Execute the batch matting algorithm using the imported Python code
-    pyodide.runPython(processMattingCode);
-    
-    // Get the results back as lists
-    const batchAlphaLists = pyodide.globals.get('batch_alpha_lists');
-    const batchForegroundLists = pyodide.globals.get('batch_foreground_lists');
+    console.log(`Processing ${imageData.length} images in batch using web worker`);
+
+    // Process in web worker
+    const { batchAlphaLists, batchForegroundLists } = await processInWorker(
+      batchImageData, 
+      batchTrimapData, 
+      batchWidths, 
+      batchHeights
+    );
     
     // Convert back to ImageData array
     const results: ImageData[] = [];
@@ -103,5 +134,15 @@ export async function closedFormMatting(imageData: ImageData[], trimapData: Imag
   } catch (error) {
     console.error('Error in closed-form matting:', error);
     throw error;
+  }
+}
+
+/**
+ * Terminate the web worker (useful for cleanup)
+ */
+export function terminateWorker(): void {
+  if (worker) {
+    worker.terminate();
+    worker = null;
   }
 }
