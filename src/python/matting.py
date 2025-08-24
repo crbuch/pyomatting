@@ -8,7 +8,7 @@ def closed_form_matting_with_prior(image, prior, prior_confidence, consts_map=No
     assert image.shape[:2] == prior_confidence.shape, 'prior_confidence must be 2D matrix with height and width equal to image.'
     assert (consts_map is None) or image.shape[:2] == consts_map.shape, 'consts_map must be 2D matrix with height and width equal to image.'
     
-    laplacian = compute_laplacian(image, ~consts_map if consts_map is not None else None)
+    laplacian = compute_laplacian(image, ~consts_map if consts_map is not None else None) #type: ignore
     confidence = scipy.sparse.diags(prior_confidence.ravel())
     solution = scipy.sparse.linalg.spsolve(
         laplacian + confidence,
