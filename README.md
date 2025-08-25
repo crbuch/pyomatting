@@ -13,8 +13,7 @@ A TypeScript package that implements closed-form alpha matting using Pyodide to 
 - 🔧 **Configurable Logging**: Verbose logging support for debugging
 - 🎨 **Interactive Demo**: Complete web interface for testing the algorithms
 - 📱 **Batch Processing**: Process multiple images simultaneously
-
-<img width="480" height="320" alt="demo" src="https://github.com/user-attachments/assets/1cadbf7a-1759-4287-bb4f-b5b926160cc4" />
+<img width="480" height="320" alt="demo" src="https://github.com/user-attachments/assets/b58be4ee-7e9b-43f2-9602-f96c6e70a354" />
 
 ## Installation
 
