@@ -166,7 +166,7 @@ Use `initializePyodide()` to pre-load the runtime during app initialization for 
 
 ## Credits
 
-- **Original Algorithm**: Levin, Lischinski, and Weiss (2007)
+- **Original Algorithm**: [Levin, Lischinski, and Weiss (2007)](https://people.csail.mit.edu/alevin/papers/Matting-Levin-Lischinski-Weiss-CVPR06.pdf)
 - **Python Implementation**: [MarcoForte/closed-form-matting](https://github.com/MarcoForte/closed-form-matting)
 - **Web Adaptation**: This package (Pyodide + TypeScript wrapper)
 
