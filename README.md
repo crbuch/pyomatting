@@ -14,6 +14,8 @@ A TypeScript package that implements closed-form alpha matting using Pyodide to 
 - 🎨 **Interactive Demo**: Complete web interface for testing the algorithms
 - 📱 **Batch Processing**: Process multiple images simultaneously
 
+<img width="480" height="320" alt="demo" src="https://github.com/user-attachments/assets/1cadbf7a-1759-4287-bb4f-b5b926160cc4" />
+
 ## Installation
 
 ```bash
