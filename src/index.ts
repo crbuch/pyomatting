@@ -2,11 +2,20 @@
 import PyWorker from "./pyodide.worker.ts?worker&inline&module";
 import { logger, setVerbose, getVerbose } from "./logger";
 
+interface ImageBuffer {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+  channels: number;
+}
+
 interface WorkerResponse {
   type: "matting_complete" | "matting_error" | "init_progress" | "processing_progress" | "init_complete";
   data?: {
-    batchAlphaLists: number[][];
-    batchForegroundLists: number[][];
+    alphaData: Float32Array;
+    foregroundData: Float32Array;
+    width: number;
+    height: number;
   };
   error?: string;
   progress?: {
@@ -36,11 +45,9 @@ function initializeWorker(): Worker {
  * Process matting in web worker and wait for initialization if needed
  */
 async function processInWorker(
-  imageData: number[][],
-  trimapData: number[][],
-  widths: number[],
-  heights: number[]
-): Promise<{ batchAlphaLists: number[][]; batchForegroundLists: number[][] }> {
+  imageBuffer: ImageBuffer,
+  trimapBuffer: ImageBuffer
+): Promise<{ alphaData: Float32Array; foregroundData: Float32Array; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const worker = initializeWorker();
 
@@ -72,11 +79,24 @@ async function processInWorker(
 
     worker.addEventListener("message", handleMessage);
 
-    // Send processing request
+    // Send processing request with transferable objects for zero-copy transfer
     worker.postMessage({
       type: "process_matting",
-      data: { imageData, trimapData, widths, heights },
-    });
+      data: { 
+        imageBuffer: {
+          data: imageBuffer.data,
+          width: imageBuffer.width,
+          height: imageBuffer.height,
+          channels: imageBuffer.channels
+        },
+        trimapBuffer: {
+          data: trimapBuffer.data,
+          width: trimapBuffer.width,
+          height: trimapBuffer.height,
+          channels: trimapBuffer.channels
+        }
+      },
+    }, { transfer: [imageBuffer.data.buffer, trimapBuffer.data.buffer] });
   });
 }
 
@@ -152,73 +172,59 @@ export function isVerboseLogging(): boolean {
 }
 
 /**
- * Performs closed-form alpha matting on multiple images with trimaps and returns RGBA images
- * @param imageData - Array of ImageData from canvas containing the source images
- * @param trimapData - Array of ImageData from canvas containing the trimaps
- * @returns Array of ImageData containing the RGBA result images (with foreground colors and alpha)
+ * Performs closed-form alpha matting on a single image with trimap and returns RGBA image
+ * @param imageData - ImageData from canvas containing the source image
+ * @param trimapData - ImageData from canvas containing the trimap
+ * @returns ImageData containing the RGBA result image (with foreground colors and alpha)
  */
 export async function closedFormMatting(
-  imageData: ImageData[],
-  trimapData: ImageData[]
-): Promise<ImageData[]> {
+  imageData: ImageData,
+  trimapData: ImageData
+): Promise<ImageData> {
   try {
-    if (imageData.length !== trimapData.length) {
-      throw new Error("Number of images and trimaps must match");
+    if (imageData.width !== trimapData.width || imageData.height !== trimapData.height) {
+      throw new Error("Image and trimap must have the same dimensions");
     }
 
-    if (imageData.length === 0) {
-      throw new Error("At least one image is required");
-    }
+    // Create efficient ImageBuffer objects with TypedArrays
+    // Use the original data directly to avoid copying
+    const imageBuffer: ImageBuffer = {
+      data: imageData.data, // Direct reference, no copy
+      width: imageData.width,
+      height: imageData.height,
+      channels: 4 // RGBA
+    };
 
-    // Convert all ImageData to regular JavaScript arrays
-    const batchImageData = imageData.map((img) => Array.from(img.data));
-    const batchTrimapData = trimapData.map((trimap) => Array.from(trimap.data));
-    const batchWidths = imageData.map((img) => img.width);
-    const batchHeights = imageData.map((img) => img.height);
+    const trimapBuffer: ImageBuffer = {
+      data: trimapData.data, // Direct reference, no copy
+      width: trimapData.width,
+      height: trimapData.height,
+      channels: 4 // RGBA
+    };
 
-    logger.log(
-      `Processing ${imageData.length} images in batch using web worker`
-    );
+    logger.log(`Processing single image ${imageData.width}x${imageData.height} using web worker`);
 
     // Process in web worker
-    const { batchAlphaLists, batchForegroundLists } = await processInWorker(
-      batchImageData,
-      batchTrimapData,
-      batchWidths,
-      batchHeights
+    const { alphaData, foregroundData, width, height } = await processInWorker(
+      imageBuffer,
+      trimapBuffer
     );
 
-    // Convert back to ImageData array
-    const results: ImageData[] = [];
+    // Create RGBA ImageData with foreground colors and alpha
+    const rgbaData = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < width * height; i++) {
+      const alphaValue = Math.round(alphaData[i] * 255);
+      const baseIndex = i * 4;
+      const fgBaseIndex = i * 3;
 
-    for (let batchIdx = 0; batchIdx < imageData.length; batchIdx++) {
-      const alphaList = batchAlphaLists[batchIdx];
-      const foregroundList = batchForegroundLists[batchIdx];
-      const width = imageData[batchIdx].width;
-      const height = imageData[batchIdx].height;
-
-      // Create RGBA ImageData with foreground colors and alpha
-      const rgbaData = new Uint8ClampedArray(width * height * 4);
-      for (let i = 0; i < width * height; i++) {
-        const alphaValue = Math.round(alphaList[i] * 255);
-        const baseIndex = i * 4;
-        const fgBaseIndex = i * 3;
-
-        // RGB from foreground, alpha from alpha matte
-        rgbaData[baseIndex] = Math.round(foregroundList[fgBaseIndex] * 255); // R
-        rgbaData[baseIndex + 1] = Math.round(
-          foregroundList[fgBaseIndex + 1] * 255
-        ); // G
-        rgbaData[baseIndex + 2] = Math.round(
-          foregroundList[fgBaseIndex + 2] * 255
-        ); // B
-        rgbaData[baseIndex + 3] = alphaValue; // A
-      }
-
-      results.push(new ImageData(rgbaData, width, height));
+      // RGB from foreground, alpha from alpha matte
+      rgbaData[baseIndex] = Math.round(foregroundData[fgBaseIndex] * 255); // R
+      rgbaData[baseIndex + 1] = Math.round(foregroundData[fgBaseIndex + 1] * 255); // G
+      rgbaData[baseIndex + 2] = Math.round(foregroundData[fgBaseIndex + 2] * 255); // B
+      rgbaData[baseIndex + 3] = alphaValue; // A
     }
 
-    return results;
+    return new ImageData(rgbaData, width, height);
   } catch (error) {
     logger.error("Error in closed-form matting:", error);
     throw error;
@@ -233,4 +239,12 @@ export function terminateWorker(): void {
     worker.terminate();
     worker = null;
   }
+}
+
+/**
+ * Clean up resources and reset state
+ */
+export function cleanup(): void {
+  terminateWorker();
+  progressCallback = null;
 }

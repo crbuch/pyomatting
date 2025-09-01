@@ -3,6 +3,13 @@ import scipy.sparse
 import cv2
 from numpy.lib.stride_tricks import as_strided
 
+# Simple cache for computed Laplacians to avoid recomputation for same-sized images
+_laplacian_cache = {}
+
+def _cache_key(shape, mask_shape=None, eps=1e-7, win_rad=1):
+    """Generate cache key for Laplacian computation."""
+    return (shape, mask_shape, eps, win_rad)
+
 def _rolling_block(A, block=(3, 3)):
     """Applies sliding window to given matrix."""
     shape = (A.shape[0] - block[0] + 1, A.shape[1] - block[1] + 1) + block

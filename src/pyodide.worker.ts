@@ -80,14 +80,14 @@ self.onmessage = async (evt) => {
         type: "init_complete",
       });
     } else if (evt.data.type === "process_matting") {
-      const { imageData, trimapData, widths, heights } = evt.data.data;
+      const { imageBuffer, trimapBuffer } = evt.data.data;
 
-      if (imageData.length !== trimapData.length) {
-        throw new Error("Number of images and trimaps must match");
+      if (!imageBuffer || !trimapBuffer) {
+        throw new Error("Image buffer and trimap buffer are required");
       }
 
-      if (imageData.length === 0) {
-        throw new Error("At least one image is required");
+      if (imageBuffer.width !== trimapBuffer.width || imageBuffer.height !== trimapBuffer.height) {
+        throw new Error("Image and trimap must have the same dimensions");
       }
 
       const pyodide = await initializePyodide();
@@ -97,25 +97,29 @@ self.onmessage = async (evt) => {
         type: "processing_progress",
         progress: { 
           stage: "processing", 
-          message: `Starting batch processing of ${imageData.length} images...`, 
+          message: `Starting processing of ${imageBuffer.width}x${imageBuffer.height} image...`, 
           percentage: 0 
         },
       });
 
-      // Set the batch data in Python
-      pyodide.globals.set("batch_image_data", imageData);
-      pyodide.globals.set("batch_trimap_data", trimapData);
-      pyodide.globals.set("batch_widths", widths);
-      pyodide.globals.set("batch_heights", heights);
+      // Use the TypedArrays directly for efficient memoryview conversion
+      // No need to create new Uint8Array, use the data directly
+      pyodide.globals.set("image_data_buffer", imageBuffer.data);
+      pyodide.globals.set("trimap_data_buffer", trimapBuffer.data);
+      pyodide.globals.set("image_width", imageBuffer.width);
+      pyodide.globals.set("image_height", imageBuffer.height);
+      pyodide.globals.set("image_channels", imageBuffer.channels);
+      pyodide.globals.set("trimap_width", trimapBuffer.width);
+      pyodide.globals.set("trimap_height", trimapBuffer.height);
+      pyodide.globals.set("trimap_channels", trimapBuffer.channels);
 
       // Create a callback function that Python can call to send progress updates
-      const sendProgressCallback = (currentImage: number, totalImages: number) => {
-        const percentage = Math.round((currentImage / totalImages) * 100);
+      const sendProgressCallback = (percentage: number, message: string) => {
         self.postMessage({
           type: "processing_progress",
           progress: { 
             stage: "processing", 
-            message: `Processing image ${currentImage + 1} of ${totalImages}...`, 
+            message, 
             percentage 
           },
         });
@@ -129,22 +133,31 @@ self.onmessage = async (evt) => {
       pyodide.globals.set("send_progress_callback", sendProgressCallback);
       pyodide.globals.set("py_logger", pyLogger);
 
-      // Execute the batch matting algorithm using the inline Python code
+      // Execute the matting algorithm using the inline Python code
       pyodide.runPython(processMattingCode);
 
-      // Get the results back as lists
-      const batchAlphaLists = pyodide.globals.get("batch_alpha_lists");
-      const batchForegroundLists = pyodide.globals.get(
-        "batch_foreground_lists"
-      );
+      // Get the results back as TypedArrays for efficient transfer
+      const alphaResult = pyodide.globals.get("alpha_result");
+      const foregroundResult = pyodide.globals.get("foreground_result");
+      const resultWidth = pyodide.globals.get("result_width");
+      const resultHeight = pyodide.globals.get("result_height");
 
-      // Convert Python objects to plain JavaScript arrays to ensure they can be cloned
-      const serializedAlphaLists: number[][] = [];
-      const serializedForegroundLists: number[][] = [];
-
-      for (let i = 0; i < batchAlphaLists.length; i++) {
-        serializedAlphaLists.push(Array.from(batchAlphaLists[i]));
-        serializedForegroundLists.push(Array.from(batchForegroundLists[i]));
+      // Convert Python arrays to TypedArrays for efficient transfer
+      // Use try-catch for more robust error handling during conversion
+      let alphaData: Float32Array;
+      let foregroundData: Float32Array;
+      
+      try {
+        const alphaArray = alphaResult.toJs();
+        const foregroundArray = foregroundResult.toJs();
+        
+        // Create TypedArrays directly from the converted arrays
+        alphaData = alphaArray instanceof Float32Array ? alphaArray : new Float32Array(alphaArray);
+        foregroundData = foregroundArray instanceof Float32Array ? foregroundArray : new Float32Array(foregroundArray);
+      } catch (conversionError) {
+        // Fallback: convert to regular arrays first, then to TypedArrays
+        alphaData = new Float32Array(Array.from(alphaResult.toJs()));
+        foregroundData = new Float32Array(Array.from(foregroundResult.toJs()));
       }
 
       // Signal completion
@@ -157,13 +170,16 @@ self.onmessage = async (evt) => {
         },
       });
 
+      // Send results with transferable objects for zero-copy transfer
       self.postMessage({
         type: "matting_complete",
         data: {
-          batchAlphaLists: serializedAlphaLists,
-          batchForegroundLists: serializedForegroundLists,
+          alphaData,
+          foregroundData,
+          width: resultWidth,
+          height: resultHeight,
         },
-      });
+      }, { transfer: [alphaData.buffer, foregroundData.buffer] });
     }
   } catch (error) {
     self.postMessage({

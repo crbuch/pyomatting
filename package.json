@@ -1,7 +1,7 @@
 {
   "name": "pyomatting",
-  "version": "1.0.0",
-  "description": "TypeScript package for closed-form alpha matting using Pyodide - bringing Python computer vision to the browser",
+  "version": "1.1.0",
+  "description": "TypeScript package for closed-form alpha matting using Pyodide - bringing Python computer vision to the browser with memory-efficient TypedArray processing",
   "type": "module",
   "main": "dist/pyomatting.es.js",
   "module": "dist/pyomatting.es.js",

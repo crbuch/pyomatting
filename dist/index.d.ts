@@ -25,13 +25,17 @@ export declare function setVerboseLogging(verbose: boolean): void;
  */
 export declare function isVerboseLogging(): boolean;
 /**
- * Performs closed-form alpha matting on multiple images with trimaps and returns RGBA images
- * @param imageData - Array of ImageData from canvas containing the source images
- * @param trimapData - Array of ImageData from canvas containing the trimaps
- * @returns Array of ImageData containing the RGBA result images (with foreground colors and alpha)
+ * Performs closed-form alpha matting on a single image with trimap and returns RGBA image
+ * @param imageData - ImageData from canvas containing the source image
+ * @param trimapData - ImageData from canvas containing the trimap
+ * @returns ImageData containing the RGBA result image (with foreground colors and alpha)
  */
-export declare function closedFormMatting(imageData: ImageData[], trimapData: ImageData[]): Promise<ImageData[]>;
+export declare function closedFormMatting(imageData: ImageData, trimapData: ImageData): Promise<ImageData>;
 /**
  * Terminate the web worker (useful for cleanup)
  */
 export declare function terminateWorker(): void;
+/**
+ * Clean up resources and reset state
+ */
+export declare function cleanup(): void;

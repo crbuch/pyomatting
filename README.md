@@ -1,6 +1,6 @@
 # Pyomatting
 
-A TypeScript package that implements closed-form alpha matting using Pyodide to run Python algorithms in the browser. This package brings the power of the closed-form matting algorithm from [MarcoForte/closed-form-matting](https://github.com/MarcoForte/closed-form-matting) to web browsers via WebAssembly.
+A TypeScript package that implements closed-form alpha matting using Pyodide to run Python algorithms in the browser. This package brings the power of the closed-form matting algorithm from [MarcoForte/closed-form-matting](https://github.com/MarcoForte/closed-form-matting) to web browsers via WebAssembly with optimized memory usage through TypedArrays and efficient data transfer.
 
 ## Features
 
@@ -9,11 +9,11 @@ A TypeScript package that implements closed-form alpha matting using Pyodide to 
 - 📦 **TypeScript Support**: Full type definitions and modern ES modules
 - 🛠️ **Modular Architecture**: Clean separation of Python algorithms in separate files
 - ⚡ **Pre-initialization**: Optional runtime pre-loading for reduced latency
+- 🧠 **Memory Efficient**: Uses TypedArrays and transferable objects for zero-copy data transfer
 - 📊 **Progress Callbacks**: Real-time progress updates during initialization and processing
 - 🔧 **Configurable Logging**: Verbose logging support for debugging
 - 🎨 **Interactive Demo**: Complete web interface for testing the algorithms
-- 📱 **Batch Processing**: Process multiple images simultaneously
-<img width="480" height="320" alt="demo" src="https://github.com/user-attachments/assets/b58be4ee-7e9b-43f2-9602-f96c6e70a354" />
+- 📱 **Single Image Processing**: Efficient processing of individual images with optimized memory usage
 
 ## Installation
 
@@ -34,18 +34,18 @@ const alphaImageData = await closedFormMatting(imageData, trimapData);
 
 ### Core Functions
 
-#### `closedFormMatting(imageData: ImageData[], trimapData: ImageData[]): Promise<ImageData[]>`
+#### `closedFormMatting(imageData: ImageData, trimapData: ImageData): Promise<ImageData>`
 
-Performs closed-form alpha matting on multiple images using trimaps.
+Performs closed-form alpha matting on a single image using a trimap.
 
 **Parameters:**
-- `imageData`: Array of ImageData from canvas containing the source images (RGB)
-- `trimapData`: Array of ImageData from canvas containing the trimaps where:
+- `imageData`: ImageData from canvas containing the source image (RGB)
+- `trimapData`: ImageData from canvas containing the trimap where:
   - Black (0) = definitely background
   - White (255) = definitely foreground  
   - Gray (128) = unknown regions to be computed
 
-**Returns:** Array of ImageData containing the computed RGBA result images (with foreground colors and alpha)
+**Returns:** ImageData containing the computed RGBA result image (with foreground colors and alpha)
 
 #### `initializePyodide(): Promise<void>`
 
@@ -112,7 +112,7 @@ addProgressCallback((stage, progress, message) => {
 await initializePyodide();
 
 // Process images
-const results = await closedFormMatting(imageDataArray, trimapDataArray);
+const result = await closedFormMatting(imageData, trimapData);
 ```
 
 ## Development
@@ -132,7 +132,7 @@ The `examples` folder contains a complete interactive demo with:
 - Drag & drop image upload interface
 - Interactive trimap editor
 - Real-time progress tracking
-- Batch processing support
+- Sequential processing of multiple images for memory efficiency
 - Side-by-side result comparison
 
 ## Algorithm
@@ -166,7 +166,7 @@ Use `initializePyodide()` to pre-load the runtime during app initialization for 
 
 ## Credits
 
-- **Original Algorithm**: [Levin, Lischinski, and Weiss (2007)](https://people.csail.mit.edu/alevin/papers/Matting-Levin-Lischinski-Weiss-CVPR06.pdf)
+- **Original Algorithm**: Levin, Lischinski, and Weiss (2007)
 - **Python Implementation**: [MarcoForte/closed-form-matting](https://github.com/MarcoForte/closed-form-matting)
 - **Web Adaptation**: This package (Pyodide + TypeScript wrapper)
 

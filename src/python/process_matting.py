@@ -1,10 +1,8 @@
 import numpy as np
+import time
 
-# Process batch of images
-batch_alpha_lists = []
-batch_foreground_lists = []
-
-total_images = len(batch_image_data) # type: ignore
+# Performance timing for optimization
+start_time = time.time()
 
 # Use logger if available, otherwise fallback to print
 def log_message(message):
@@ -13,48 +11,85 @@ def log_message(message):
     else:
         print(message)
 
-log_message(f"Processing batch of {total_images} images")
-
-for batch_idx in range(total_images):
-    # Send progress update via JavaScript
+def send_progress(percentage, message):
     if 'send_progress_callback' in globals():
-        send_progress_callback(batch_idx, total_images) # type: ignore
+        send_progress_callback(percentage, message) # type: ignore
+
+def log_timing(stage, start_t):
+    """Log timing information for performance monitoring."""
+    elapsed = time.time() - start_t
+    log_message(f"{stage} took {elapsed:.2f} seconds")
+    return time.time()
+
+log_message("Starting single image processing")
+
+# Get image data from memoryview (efficient, no copy)
+image_buffer = np.asarray(image_data_buffer) # type: ignore
+trimap_buffer = np.asarray(trimap_data_buffer) # type: ignore
+
+# Get dimensions
+width = image_width # type: ignore
+height = image_height # type: ignore
+img_channels = image_channels # type: ignore
+trimap_w = trimap_width # type: ignore  
+trimap_h = trimap_height # type: ignore
+trimap_ch = trimap_channels # type: ignore
+
+log_message(f"Image dimensions: {width}x{height}x{img_channels}")
+log_message(f"Trimap dimensions: {trimap_w}x{trimap_h}x{trimap_ch}")
+
+send_progress(10, "Reshaping image data...")
+reshape_start = time.time()
+
+# Reshape buffers to proper image format
+image_rgba = image_buffer.reshape((height, width, img_channels))
+# More efficient RGB extraction - direct slice, no division by zero check needed
+image_rgb = (image_rgba[:, :, :3]).astype(np.float32, copy=False) * (1.0/255.0)
+
+trimap_rgba = trimap_buffer.reshape((trimap_h, trimap_w, trimap_ch))
+# More efficient grayscale conversion using vectorized operations
+trimap_gray = (trimap_rgba[:, :, 0] * 0.299 + 
+               trimap_rgba[:, :, 1] * 0.587 + 
+               trimap_rgba[:, :, 2] * 0.114).astype(np.float32, copy=False) * (1.0/255.0)
+
+log_timing("Data reshaping", reshape_start)
+
+log_message(f"Image RGB shape: {image_rgb.shape}, range: {image_rgb.min():.3f} to {image_rgb.max():.3f}")
+log_message(f"Trimap shape: {trimap_gray.shape}, range: {trimap_gray.min():.3f} to {trimap_gray.max():.3f}")
+
+send_progress(30, "Computing alpha matte...")
+matting_start = time.time()
+
+# Perform closed-form matting
+try:
+    alpha_result = closed_form_matting_with_trimap(image_rgb, trimap_gray) # type: ignore
+    matting_time = log_timing("Alpha matting", matting_start)
+    log_message(f"Alpha result shape: {alpha_result.shape}, range: {alpha_result.min():.3f} to {alpha_result.max():.3f}")
     
-    # Convert image data to numpy array
-    image_array = np.array(batch_image_data[batch_idx], dtype=np.uint8) # type: ignore
-    width = batch_widths[batch_idx] # type: ignore
-    height = batch_heights[batch_idx] # type: ignore
+    send_progress(70, "Computing foreground estimation...")
+    fg_start = time.time()
     
-    image_rgba = image_array.reshape((height, width, 4))
-    image_rgb = image_rgba[:, :, :3].astype(np.float32) / 255.0
+    # Compute foreground estimation
+    foreground_result, _ = solve_foreground_background(image_rgb, alpha_result) # type: ignore
+    log_timing("Foreground estimation", fg_start)
+    log_message(f"Foreground result shape: {foreground_result.shape}, range: {foreground_result.min():.3f} to {foreground_result.max():.3f}")
+    
+except Exception as e:
+    log_message(f"Error in matting: {e}")
+    import traceback
+    traceback.print_exc()
+    alpha_result = trimap_gray  # Fallback to trimap
+    foreground_result = image_rgb  # Fallback to original image
 
-    # Convert trimap data to numpy array  
-    trimap_array = np.array(batch_trimap_data[batch_idx], dtype=np.uint8) # type: ignore
-    trimap_rgba = trimap_array.reshape((height, width, 4))
-    trimap_gray = np.mean(trimap_rgba[:, :, :3], axis=2).astype(np.float32) / 255.0
+send_progress(90, "Preparing results...")
 
-    log_message(f"Image {batch_idx + 1}: shape {image_rgb.shape}, trimap shape {trimap_gray.shape}")
+# Flatten results for efficient transfer - avoid creating temporary variables
+# Use copy=False to avoid unnecessary copying when possible
+alpha_result = alpha_result.astype(np.float32, copy=False).ravel()
+foreground_result = foreground_result.astype(np.float32, copy=False).ravel()
+result_width = width
+result_height = height
 
-    # Perform closed-form matting
-    try:
-        alpha_result = closed_form_matting_with_trimap(image_rgb, trimap_gray) # type: ignore
-        log_message(f"Image {batch_idx + 1}: Alpha result shape {alpha_result.shape}, range {alpha_result.min():.3f} to {alpha_result.max():.3f}")
-        
-        # Compute foreground estimation
-        foreground_result, _ = solve_foreground_background(image_rgb, alpha_result) # type: ignore
-        log_message(f"Image {batch_idx + 1}: Foreground result shape {foreground_result.shape}, range {foreground_result.min():.3f} to {foreground_result.max():.3f}")
-        
-    except Exception as e:
-        log_message(f"Error in matting for image {batch_idx + 1}: {e}")
-        import traceback
-        traceback.print_exc()
-        alpha_result = trimap_gray  # Fallback to trimap
-        foreground_result = image_rgb  # Fallback to original image
+send_progress(100, "Processing complete!")
 
-    # Convert results to lists for JavaScript
-    alpha_list = alpha_result.flatten().tolist()
-    foreground_list = foreground_result.flatten().tolist()
-    batch_alpha_lists.append(alpha_list)
-    batch_foreground_lists.append(foreground_list)
-
-log_message(f"Batch processing completed: {len(batch_alpha_lists)} alpha results and {len(batch_foreground_lists)} foreground results")
+log_message(f"Processing completed: alpha shape {alpha_result.shape}, foreground shape {foreground_result.shape}")
