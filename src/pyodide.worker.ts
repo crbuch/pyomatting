@@ -80,14 +80,10 @@ self.onmessage = async (evt) => {
         type: "init_complete",
       });
     } else if (evt.data.type === "process_matting") {
-      const { imageBuffer, trimapBuffer } = evt.data.data;
+      const { combinedBuffer } = evt.data.data;
 
-      if (!imageBuffer || !trimapBuffer) {
-        throw new Error("Image buffer and trimap buffer are required");
-      }
-
-      if (imageBuffer.width !== trimapBuffer.width || imageBuffer.height !== trimapBuffer.height) {
-        throw new Error("Image and trimap must have the same dimensions");
+      if (!combinedBuffer) {
+        throw new Error("Combined buffer with image and trimap data is required");
       }
 
       const pyodide = await initializePyodide();
@@ -97,21 +93,16 @@ self.onmessage = async (evt) => {
         type: "processing_progress",
         progress: { 
           stage: "processing", 
-          message: `Starting processing of ${imageBuffer.width}x${imageBuffer.height} image...`, 
+          message: `Starting processing of ${combinedBuffer.width}x${combinedBuffer.height} image with trimap in alpha channel...`, 
           percentage: 0 
         },
       });
 
-      // Use the TypedArrays directly for efficient memoryview conversion
-      // No need to create new Uint8Array, use the data directly
-      pyodide.globals.set("image_data_buffer", imageBuffer.data);
-      pyodide.globals.set("trimap_data_buffer", trimapBuffer.data);
-      pyodide.globals.set("image_width", imageBuffer.width);
-      pyodide.globals.set("image_height", imageBuffer.height);
-      pyodide.globals.set("image_channels", imageBuffer.channels);
-      pyodide.globals.set("trimap_width", trimapBuffer.width);
-      pyodide.globals.set("trimap_height", trimapBuffer.height);
-      pyodide.globals.set("trimap_channels", trimapBuffer.channels);
+      // Use the TypedArray directly for efficient memoryview conversion
+      pyodide.globals.set("combined_data_buffer", combinedBuffer.data);
+      pyodide.globals.set("image_width", combinedBuffer.width);
+      pyodide.globals.set("image_height", combinedBuffer.height);
+      pyodide.globals.set("image_channels", combinedBuffer.channels);
 
       // Create a callback function that Python can call to send progress updates
       const sendProgressCallback = (percentage: number, message: string) => {

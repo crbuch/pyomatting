@@ -139,6 +139,36 @@ function imageDataToCanvas(imageData: ImageData): string {
     return canvas.toDataURL();
 }
 
+function combineImageWithTrimap(sourceImg: HTMLImageElement, trimapImg: HTMLImageElement): ImageData {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    
+    canvas.width = sourceImg.width;
+    canvas.height = sourceImg.height;
+    
+    // Draw source image to get RGB data
+    ctx.drawImage(sourceImg, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // Draw trimap to get alpha data
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(trimapImg, 0, 0);
+    const trimapData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // Combine: RGB from source, Alpha from trimap (using trimap's red channel)
+    for (let i = 0; i < imageData.data.length; i += 4) {
+        // Keep RGB from original image
+        // imageData.data[i] = imageData.data[i];     // R - unchanged
+        // imageData.data[i + 1] = imageData.data[i + 1]; // G - unchanged  
+        // imageData.data[i + 2] = imageData.data[i + 2]; // B - unchanged
+        
+        // Set alpha from trimap (use red channel since trimap is grayscale)
+        imageData.data[i + 3] = trimapData.data[i]; // A from trimap R channel
+    }
+    
+    return imageData;
+}
+
 // File input handlers - support multiple files
 elements.imageInput.addEventListener('change', async (e) => {
     const files = (e.target as HTMLInputElement).files;
@@ -290,14 +320,13 @@ elements.processBtn.addEventListener('click', async () => {
             const imageProgress = Math.round((i / sourceImages.length) * 100);
             updateProgress('processing', imageProgress, `Processing image ${i + 1} of ${sourceImages.length}...`);
             
-            // Convert current image to ImageData
-            const imageData = imageToCanvas(sourceImages[i]);
-            const trimapData = imageToCanvas(trimapImages[i]);
+            // Combine source image with trimap in alpha channel
+            const combinedImageData = combineImageWithTrimap(sourceImages[i], trimapImages[i]);
 
-            console.log(`Processing image ${i + 1}: ${imageData.width}x${imageData.height}`);
+            console.log(`Processing image ${i + 1}: ${combinedImageData.width}x${combinedImageData.height}`);
 
-            // Perform single image matting
-            const rgbaResult = await closedFormMatting(imageData, trimapData);
+            // Perform single image matting with combined data
+            const rgbaResult = await closedFormMatting(combinedImageData);
             rgbaResults.push(rgbaResult);
 
             // Create result display for this image

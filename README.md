@@ -26,26 +26,24 @@ npm install pyomatting
 ```typescript
 import { closedFormMatting } from 'pyomatting';
 
-// Perform alpha matting on ImageData from canvas
-const alphaImageData = await closedFormMatting(imageData, trimapData);
+// Perform alpha matting on ImageData with trimap in alpha channel
+const alphaImageData = await closedFormMatting(combinedImageData);
 ```
 
 ## API Reference
 
 ### Core Functions
 
-#### `closedFormMatting(imageData: ImageData, trimapData: ImageData): Promise<ImageData>`
+#### `closedFormMatting(imageData: ImageData): Promise<ImageData>`
 
-Performs closed-form alpha matting on a single image using a trimap.
+Performs closed-form alpha matting on a single image with trimap encoded in the alpha channel.
 
 **Parameters:**
-- `imageData`: ImageData from canvas containing the source image (RGB)
-- `trimapData`: ImageData from canvas containing the trimap where:
-  - Black (0) = definitely background
-  - White (255) = definitely foreground  
-  - Gray (128) = unknown regions to be computed
+- `imageData`: ImageData from canvas containing both the source image and trimap:
+  - RGB channels: Original image colors (0-255)
+  - Alpha channel: Trimap values where 0=background, 255=foreground, 128=unknown
 
-**Returns:** ImageData containing the computed RGBA result image (with foreground colors and alpha)
+**Returns:** ImageData containing the computed RGBA result image (with foreground colors and computed alpha)
 
 #### `initializePyodide(): Promise<void>`
 
@@ -111,8 +109,34 @@ addProgressCallback((stage, progress, message) => {
 // Optional: Pre-initialize for faster first run
 await initializePyodide();
 
-// Process images
-const result = await closedFormMatting(imageData, trimapData);
+// Combine image and trimap into single ImageData
+function combineImageWithTrimap(sourceImg: HTMLImageElement, trimapImg: HTMLImageElement): ImageData {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+  
+  canvas.width = sourceImg.width;
+  canvas.height = sourceImg.height;
+  
+  // Draw source image to get RGB data
+  ctx.drawImage(sourceImg, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  
+  // Draw trimap to get alpha data
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(trimapImg, 0, 0);
+  const trimapData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  
+  // Combine: RGB from source, Alpha from trimap
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    imageData.data[i + 3] = trimapData.data[i]; // Alpha from trimap's red channel
+  }
+  
+  return imageData;
+}
+
+// Process image
+const combinedData = combineImageWithTrimap(sourceImage, trimapImage);
+const result = await closedFormMatting(combinedData);
 ```
 
 ## Development

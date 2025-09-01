@@ -45,8 +45,7 @@ function initializeWorker(): Worker {
  * Process matting in web worker and wait for initialization if needed
  */
 async function processInWorker(
-  imageBuffer: ImageBuffer,
-  trimapBuffer: ImageBuffer
+  combinedBuffer: ImageBuffer
 ): Promise<{ alphaData: Float32Array; foregroundData: Float32Array; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const worker = initializeWorker();
@@ -83,20 +82,14 @@ async function processInWorker(
     worker.postMessage({
       type: "process_matting",
       data: { 
-        imageBuffer: {
-          data: imageBuffer.data,
-          width: imageBuffer.width,
-          height: imageBuffer.height,
-          channels: imageBuffer.channels
-        },
-        trimapBuffer: {
-          data: trimapBuffer.data,
-          width: trimapBuffer.width,
-          height: trimapBuffer.height,
-          channels: trimapBuffer.channels
+        combinedBuffer: {
+          data: combinedBuffer.data,
+          width: combinedBuffer.width,
+          height: combinedBuffer.height,
+          channels: combinedBuffer.channels
         }
       },
-    }, { transfer: [imageBuffer.data.buffer, trimapBuffer.data.buffer] });
+    }, { transfer: [combinedBuffer.data.buffer] });
   });
 }
 
@@ -172,42 +165,29 @@ export function isVerboseLogging(): boolean {
 }
 
 /**
- * Performs closed-form alpha matting on a single image with trimap and returns RGBA image
- * @param imageData - ImageData from canvas containing the source image
- * @param trimapData - ImageData from canvas containing the trimap
- * @returns ImageData containing the RGBA result image (with foreground colors and alpha)
+ * Performs closed-form alpha matting on a single image with trimap encoded in alpha channel
+ * @param imageData - ImageData from canvas containing the source image with trimap in alpha channel:
+ *   - RGB channels: Original image colors
+ *   - Alpha channel: Trimap where 0=background, 255=foreground, 128=unknown (to be solved)
+ * @returns ImageData containing the RGBA result image (with foreground colors and computed alpha)
  */
 export async function closedFormMatting(
-  imageData: ImageData,
-  trimapData: ImageData
+  imageData: ImageData
 ): Promise<ImageData> {
   try {
-    if (imageData.width !== trimapData.width || imageData.height !== trimapData.height) {
-      throw new Error("Image and trimap must have the same dimensions");
-    }
-
-    // Create efficient ImageBuffer objects with TypedArrays
-    // Use the original data directly to avoid copying
-    const imageBuffer: ImageBuffer = {
+    // Create a single ImageBuffer that contains both image and trimap data
+    const combinedBuffer: ImageBuffer = {
       data: imageData.data, // Direct reference, no copy
       width: imageData.width,
       height: imageData.height,
       channels: 4 // RGBA
     };
 
-    const trimapBuffer: ImageBuffer = {
-      data: trimapData.data, // Direct reference, no copy
-      width: trimapData.width,
-      height: trimapData.height,
-      channels: 4 // RGBA
-    };
-
-    logger.log(`Processing single image ${imageData.width}x${imageData.height} using web worker`);
+    logger.log(`Processing single image ${imageData.width}x${imageData.height} with trimap in alpha channel using web worker`);
 
     // Process in web worker
     const { alphaData, foregroundData, width, height } = await processInWorker(
-      imageBuffer,
-      trimapBuffer
+      combinedBuffer
     );
 
     // Create RGBA ImageData with foreground colors and alpha
