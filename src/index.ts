@@ -169,21 +169,64 @@ export function isVerboseLogging(): boolean {
  * @param imageData - ImageData from canvas containing the source image with trimap in alpha channel:
  *   - RGB channels: Original image colors
  *   - Alpha channel: Trimap where 0=background, 255=foreground, 128=unknown (to be solved)
+ * @param maxDimension - Maximum dimension (width or height) for processing. Images larger than this will be downscaled for processing and then upscaled back. Default: 1024
  * @returns ImageData containing the RGBA result image (with foreground colors and computed alpha)
  */
 export async function closedFormMatting(
-  imageData: ImageData
+  imageData: ImageData,
+  maxDimension: number = 1024
 ): Promise<ImageData> {
   try {
+    const originalWidth = imageData.width;
+    const originalHeight = imageData.height;
+    const maxOriginalDimension = Math.max(originalWidth, originalHeight);
+    
+    let processedImageData = imageData;
+    let scaleFactor = 1;
+    
+    // Check if image needs downscaling
+    if (maxOriginalDimension > maxDimension) {
+      scaleFactor = maxDimension / maxOriginalDimension;
+      const scaledWidth = Math.round(originalWidth * scaleFactor);
+      const scaledHeight = Math.round(originalHeight * scaleFactor);
+      
+      logger.log(`Downscaling image from ${originalWidth}x${originalHeight} to ${scaledWidth}x${scaledHeight} (scale factor: ${scaleFactor.toFixed(3)})`);
+      
+      // Create canvas to resize the image
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      
+      // Set canvas to original size and draw the image
+      canvas.width = originalWidth;
+      canvas.height = originalHeight;
+      ctx.putImageData(imageData, 0, 0);
+      
+      // Create a new canvas for the scaled image
+      const scaledCanvas = document.createElement('canvas');
+      const scaledCtx = scaledCanvas.getContext('2d')!;
+      scaledCanvas.width = scaledWidth;
+      scaledCanvas.height = scaledHeight;
+      
+      // Use high-quality scaling
+      scaledCtx.imageSmoothingEnabled = true;
+      scaledCtx.imageSmoothingQuality = 'high';
+      
+      // Draw scaled image
+      scaledCtx.drawImage(canvas, 0, 0, originalWidth, originalHeight, 0, 0, scaledWidth, scaledHeight);
+      
+      // Get the scaled image data
+      processedImageData = scaledCtx.getImageData(0, 0, scaledWidth, scaledHeight);
+    }
+
     // Create a single ImageBuffer that contains both image and trimap data
     const combinedBuffer: ImageBuffer = {
-      data: imageData.data, // Direct reference, no copy
-      width: imageData.width,
-      height: imageData.height,
+      data: processedImageData.data, // Direct reference, no copy
+      width: processedImageData.width,
+      height: processedImageData.height,
       channels: 4 // RGBA
     };
 
-    logger.log(`Processing single image ${imageData.width}x${imageData.height} with trimap in alpha channel using web worker`);
+    logger.log(`Processing image ${processedImageData.width}x${processedImageData.height} with trimap in alpha channel using web worker`);
 
     // Process in web worker
     const { alphaData, foregroundData, width, height } = await processInWorker(
@@ -204,7 +247,37 @@ export async function closedFormMatting(
       rgbaData[baseIndex + 3] = alphaValue; // A
     }
 
-    return new ImageData(rgbaData, width, height);
+    let resultImageData = new ImageData(rgbaData, width, height);
+
+    // If we downscaled, upscale the result back to original resolution
+    if (scaleFactor < 1) {
+      logger.log(`Upscaling result from ${width}x${height} back to ${originalWidth}x${originalHeight}`);
+      
+      // Create canvas with the processed result
+      const resultCanvas = document.createElement('canvas');
+      const resultCtx = resultCanvas.getContext('2d')!;
+      resultCanvas.width = width;
+      resultCanvas.height = height;
+      resultCtx.putImageData(resultImageData, 0, 0);
+      
+      // Create canvas for the final upscaled result
+      const finalCanvas = document.createElement('canvas');
+      const finalCtx = finalCanvas.getContext('2d')!;
+      finalCanvas.width = originalWidth;
+      finalCanvas.height = originalHeight;
+      
+      // Use high-quality scaling for upscaling
+      finalCtx.imageSmoothingEnabled = true;
+      finalCtx.imageSmoothingQuality = 'high';
+      
+      // Draw upscaled result
+      finalCtx.drawImage(resultCanvas, 0, 0, width, height, 0, 0, originalWidth, originalHeight);
+      
+      // Get the final upscaled image data
+      resultImageData = finalCtx.getImageData(0, 0, originalWidth, originalHeight);
+    }
+
+    return resultImageData;
   } catch (error) {
     logger.error("Error in closed-form matting:", error);
     throw error;
