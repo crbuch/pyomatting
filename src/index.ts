@@ -183,6 +183,9 @@ export async function closedFormMatting(
   entropyTrimapParams?: { band_ratio?: number; mid_band?: number }
 ): Promise<ImageData> {
   try {
+    // Debug logging
+    console.log('Main function: entropyTrimapParams:', entropyTrimapParams);
+    
     const originalWidth = imageData.width;
     const originalHeight = imageData.height;
     const maxOriginalDimension = Math.max(originalWidth, originalHeight);

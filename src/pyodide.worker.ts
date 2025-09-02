@@ -109,6 +109,12 @@ self.onmessage = async (evt) => {
       const bandRatio = entropyTrimapParams?.band_ratio ?? 0.01;
       const midBand = entropyTrimapParams?.mid_band ?? 0.2;
       
+      // Debug logging
+      console.log('Worker: entropyTrimapParams:', entropyTrimapParams);
+      console.log('Worker: useEntropy:', useEntropy);
+      console.log('Worker: bandRatio:', bandRatio);
+      console.log('Worker: midBand:', midBand);
+      
       pyodide.globals.set("use_entropy_trimap", useEntropy);
       pyodide.globals.set("entropy_band_ratio", bandRatio);
       pyodide.globals.set("entropy_mid_band", midBand);

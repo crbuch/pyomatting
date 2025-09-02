@@ -96,6 +96,11 @@ use_entropy = use_entropy_trimap # type: ignore
 band_ratio = entropy_band_ratio if 'entropy_band_ratio' in globals() else 0.01 # type: ignore
 mid_band = entropy_mid_band if 'entropy_mid_band' in globals() else 0.2 # type: ignore
 
+# Debug logging
+log_message(f"Python received use_entropy_trimap: {use_entropy}")
+log_message(f"Python received entropy_band_ratio: {band_ratio}")
+log_message(f"Python received entropy_mid_band: {mid_band}")
+
 log_message(f"Combined image dimensions: {width}x{height}x{channels}")
 log_message(f"Entropy trimap processing: {'enabled' if use_entropy else 'disabled'}")
 if use_entropy:
