@@ -45,7 +45,8 @@ function initializeWorker(): Worker {
  * Process matting in web worker and wait for initialization if needed
  */
 async function processInWorker(
-  combinedBuffer: ImageBuffer
+  combinedBuffer: ImageBuffer,
+  useEntropyTrimap: boolean = false
 ): Promise<{ alphaData: Float32Array; foregroundData: Float32Array; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const worker = initializeWorker();
@@ -87,7 +88,8 @@ async function processInWorker(
           width: combinedBuffer.width,
           height: combinedBuffer.height,
           channels: combinedBuffer.channels
-        }
+        },
+        useEntropyTrimap
       },
     }, { transfer: [combinedBuffer.data.buffer] });
   });
@@ -170,11 +172,13 @@ export function isVerboseLogging(): boolean {
  *   - RGB channels: Original image colors
  *   - Alpha channel: Trimap where 0=background, 255=foreground, 128=unknown (to be solved)
  * @param maxDimension - Maximum dimension (width or height) for processing. Images larger than this will be downscaled for processing and then upscaled back. Default: 1024
+ * @param useEntropyTrimap - If true, applies entropy-based trimap refinement to expand uncertain regions for over-confident predictions. Default: false
  * @returns ImageData containing the RGBA result image (with foreground colors and computed alpha)
  */
 export async function closedFormMatting(
   imageData: ImageData,
-  maxDimension: number = 1024
+  maxDimension: number = 1024,
+  useEntropyTrimap: boolean = false
 ): Promise<ImageData> {
   try {
     const originalWidth = imageData.width;
@@ -230,7 +234,8 @@ export async function closedFormMatting(
 
     // Process in web worker
     const { alphaData, foregroundData, width, height } = await processInWorker(
-      combinedBuffer
+      combinedBuffer,
+      useEntropyTrimap
     );
 
     // Create RGBA ImageData with foreground colors and alpha

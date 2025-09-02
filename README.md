@@ -10,6 +10,7 @@ A TypeScript package that implements closed-form alpha matting using Pyodide to 
 - 🛠️ **Modular Architecture**: Clean separation of Python algorithms in separate files
 - ⚡ **Pre-initialization**: Optional runtime pre-loading for reduced latency
 - 🧠 **Memory Efficient**: Uses TypedArrays and transferable objects for zero-copy data transfer
+- 🎯 **Entropy Trimap**: Smart trimap refinement for over-confident neural network predictions
 - 📊 **Progress Callbacks**: Real-time progress updates during initialization and processing
 - 🔧 **Configurable Logging**: Verbose logging support for debugging
 - 🎨 **Interactive Demo**: Complete web interface for testing the algorithms
@@ -28,22 +29,27 @@ import { closedFormMatting } from 'pyomatting';
 
 // Perform alpha matting on ImageData with trimap in alpha channel
 const alphaImageData = await closedFormMatting(combinedImageData);
+
+// With entropy trimap refinement for over-confident predictions
+const refinedResult = await closedFormMatting(combinedImageData, 1024, true);
 ```
 
 ## API Reference
 
 ### Core Functions
 
-#### `closedFormMatting(imageData: ImageData): Promise<ImageData>`
+#### `closedFormMatting(imageData: ImageData, maxDimension: number, useEntropyTrimap: boolean): Promise<ImageData>`
 
-Performs closed-form alpha matting on a single image with trimap encoded in the alpha channel.
+Performs closed-form alpha matting on a single image using a trimap encoded in the alpha channel.
 
 **Parameters:**
-- `imageData`: ImageData from canvas containing both the source image and trimap:
-  - RGB channels: Original image colors (0-255)
-  - Alpha channel: Trimap values where 0=background, 255=foreground, 128=unknown
+- `imageData`: ImageData from canvas containing the source image with trimap in alpha channel:
+  - RGB channels: Original image colors
+  - Alpha channel: Trimap where 0=background, 255=foreground, 128=unknown
+- `maxDimension` (optional): Maximum dimension for processing. Images larger than this will be downscaled. Default: 1024
+- `useEntropyTrimap` (optional): Apply entropy-based trimap refinement for over-confident predictions. Default: false
 
-**Returns:** ImageData containing the computed RGBA result image (with foreground colors and computed alpha)
+**Returns:** ImageData containing the computed RGBA result image (with foreground colors and alpha)
 
 #### `initializePyodide(): Promise<void>`
 
@@ -136,7 +142,24 @@ function combineImageWithTrimap(sourceImg: HTMLImageElement, trimapImg: HTMLImag
 
 // Process image
 const combinedData = combineImageWithTrimap(sourceImage, trimapImage);
-const result = await closedFormMatting(combinedData);
+// Process images
+const result = await closedFormMatting(combinedImageData);
+
+// For over-confident neural network predictions (like U^2-Net)
+const resultWithEntropy = await closedFormMatting(combinedImageData, 1024, true);
+```
+
+### Entropy Trimap Refinement
+
+When working with neural networks like U^2-Net that produce over-confident predictions, the trimap may have too thin unknown regions. Enable entropy trimap processing to:
+
+- **Expand uncertain regions**: Areas where the model probability is near 0.5 become unknown
+- **Add geometric bands**: Guaranteed minimum band width around foreground/background boundaries  
+- **Adaptive scaling**: Band width adapts to image size for consistent results
+
+```typescript
+// Enable entropy trimap refinement for better results with confident neural networks
+const result = await closedFormMatting(combinedImageData, 1024, true);
 ```
 
 ## Development

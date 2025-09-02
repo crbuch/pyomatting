@@ -80,7 +80,7 @@ self.onmessage = async (evt) => {
         type: "init_complete",
       });
     } else if (evt.data.type === "process_matting") {
-      const { combinedBuffer } = evt.data.data;
+      const { combinedBuffer, useEntropyTrimap } = evt.data.data;
 
       if (!combinedBuffer) {
         throw new Error("Combined buffer with image and trimap data is required");
@@ -103,6 +103,7 @@ self.onmessage = async (evt) => {
       pyodide.globals.set("image_width", combinedBuffer.width);
       pyodide.globals.set("image_height", combinedBuffer.height);
       pyodide.globals.set("image_channels", combinedBuffer.channels);
+      pyodide.globals.set("use_entropy_trimap", useEntropyTrimap || false);
 
       // Create a callback function that Python can call to send progress updates
       const sendProgressCallback = (percentage: number, message: string) => {

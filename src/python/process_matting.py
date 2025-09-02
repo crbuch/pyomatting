@@ -1,5 +1,37 @@
 import numpy as np
 import time
+import cv2
+
+def entropy_trimap(prob, band_ratio=0.01, mid_band=0.2):
+    """
+    Creates an uncertainty-driven trimap with adaptive band width.
+    
+    Args:
+        prob: Probability map (0-1) where 1=foreground, 0=background
+        band_ratio: Minimum band width as a fraction of min(H,W) (e.g., 1%)
+        mid_band: |p-0.5| <= mid_band becomes unknown (e.g., 0.2 -> [0.3,0.7])
+    
+    Returns:
+        trimap: uint8 array with 0=background, 255=foreground, 128=unknown
+    """
+    h, w = prob.shape
+    
+    # Base certainty thresholds from mid-band
+    fg = prob >= (0.5 + mid_band)
+    bg = prob <= (0.5 - mid_band)
+    unknown = ~(fg | bg)
+
+    # Guarantee a geometric band around FG/BG boundaries
+    mask = ((fg.astype(np.uint8) * 2) + bg.astype(np.uint8))  # 2=fg, 1=bg, 0=unknown
+    edges = cv2.Canny((mask * 100).astype(np.uint8), 0, 100)
+    band_px = max(1, int(round(min(h, w) * band_ratio)))
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * band_px + 1, 2 * band_px + 1))
+    unknown |= (cv2.dilate(edges, k) > 0)
+
+    trimap = np.full((h, w), 128, np.uint8)
+    trimap[bg] = 0
+    trimap[fg] = 255
+    return trimap
 
 # Performance timing for optimization
 start_time = time.time()
@@ -26,12 +58,14 @@ log_message("Starting single image processing with trimap in alpha channel")
 # Get combined data from memoryview (efficient, no copy)
 combined_buffer = np.asarray(combined_data_buffer) # type: ignore
 
-# Get dimensions
+# Get dimensions and parameters
 width = image_width # type: ignore
 height = image_height # type: ignore
 channels = image_channels # type: ignore
+use_entropy = use_entropy_trimap # type: ignore
 
 log_message(f"Combined image dimensions: {width}x{height}x{channels}")
+log_message(f"Entropy trimap processing: {'enabled' if use_entropy else 'disabled'}")
 
 send_progress(10, "Extracting image and trimap from alpha channel...")
 reshape_start = time.time()
@@ -43,7 +77,19 @@ combined_rgba = combined_buffer.reshape((height, width, channels))
 image_rgb = (combined_rgba[:, :, :3]).astype(np.float32, copy=False) * (1.0/255.0)
 
 # Extract the trimap from alpha channel
-trimap_alpha = (combined_rgba[:, :, 3]).astype(np.float32, copy=False) * (1.0/255.0)
+trimap_alpha_raw = (combined_rgba[:, :, 3]).astype(np.float32, copy=False) * (1.0/255.0)
+
+# Apply entropy trimap processing if requested
+if use_entropy:
+    log_message("Applying entropy-based trimap refinement...")
+    send_progress(20, "Refining trimap with entropy analysis...")
+    
+    # Convert to 0-1 probability map for entropy processing
+    trimap_entropy = entropy_trimap(trimap_alpha_raw, band_ratio=0.01, mid_band=0.2)
+    trimap_alpha = trimap_entropy.astype(np.float32) / 255.0
+    log_message(f"Entropy trimap applied: {np.sum(trimap_entropy == 128)} unknown pixels")
+else:
+    trimap_alpha = trimap_alpha_raw
 
 log_timing("Data extraction and reshaping", reshape_start)
 
