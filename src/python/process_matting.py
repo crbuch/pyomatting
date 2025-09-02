@@ -15,22 +15,52 @@ def entropy_trimap(prob, band_ratio=0.01, mid_band=0.2):
         trimap: uint8 array with 0=background, 255=foreground, 128=unknown
     """
     h, w = prob.shape
+    log_message(f"Entropy trimap processing: image size {h}x{w}")
+    log_message(f"Entropy parameters: band_ratio={band_ratio}, mid_band={mid_band}")
     
     # Base certainty thresholds from mid-band
-    fg = prob >= (0.5 + mid_band)
-    bg = prob <= (0.5 - mid_band)
+    fg_threshold = 0.5 + mid_band
+    bg_threshold = 0.5 - mid_band
+    log_message(f"Certainty thresholds: bg <= {bg_threshold:.3f}, fg >= {fg_threshold:.3f}")
+    
+    fg = prob >= fg_threshold
+    bg = prob <= bg_threshold
     unknown = ~(fg | bg)
+    
+    initial_fg_count = np.sum(fg)
+    initial_bg_count = np.sum(bg)
+    initial_unknown_count = np.sum(unknown)
+    log_message(f"Initial classification: {initial_fg_count} fg, {initial_bg_count} bg, {initial_unknown_count} unknown")
 
     # Guarantee a geometric band around FG/BG boundaries
     mask = ((fg.astype(np.uint8) * 2) + bg.astype(np.uint8))  # 2=fg, 1=bg, 0=unknown
     edges = cv2.Canny((mask * 100).astype(np.uint8), 0, 100)
+    edge_count = np.sum(edges > 0)
+    log_message(f"Edge detection found {edge_count} edge pixels")
+    
     band_px = max(1, int(round(min(h, w) * band_ratio)))
+    log_message(f"Geometric band width: {band_px} pixels (from {band_ratio:.3f} * min({h}, {w}))")
+    
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * band_px + 1, 2 * band_px + 1))
-    unknown |= (cv2.dilate(edges, k) > 0)
+    dilated_edges = cv2.dilate(edges, k) > 0
+    edge_band_count = np.sum(dilated_edges)
+    log_message(f"Dilated edge band covers {edge_band_count} pixels")
+    
+    unknown |= dilated_edges
+    final_unknown_count = np.sum(unknown)
+    added_unknown = final_unknown_count - initial_unknown_count
+    log_message(f"Added {added_unknown} pixels to unknown region via edge dilation")
 
     trimap = np.full((h, w), 128, np.uint8)
     trimap[bg] = 0
     trimap[fg] = 255
+    
+    final_fg_count = np.sum(trimap == 255)
+    final_bg_count = np.sum(trimap == 0)
+    final_unknown_count = np.sum(trimap == 128)
+    log_message(f"Final trimap: {final_fg_count} fg, {final_bg_count} bg, {final_unknown_count} unknown")
+    log_message(f"Unknown region ratio: {final_unknown_count / (h * w):.3f}")
+    
     return trimap
 
 # Performance timing for optimization
@@ -63,9 +93,13 @@ width = image_width # type: ignore
 height = image_height # type: ignore
 channels = image_channels # type: ignore
 use_entropy = use_entropy_trimap # type: ignore
+band_ratio = entropy_band_ratio if 'entropy_band_ratio' in globals() else 0.01 # type: ignore
+mid_band = entropy_mid_band if 'entropy_mid_band' in globals() else 0.2 # type: ignore
 
 log_message(f"Combined image dimensions: {width}x{height}x{channels}")
 log_message(f"Entropy trimap processing: {'enabled' if use_entropy else 'disabled'}")
+if use_entropy:
+    log_message(f"Entropy parameters: band_ratio={band_ratio}, mid_band={mid_band}")
 
 send_progress(10, "Extracting image and trimap from alpha channel...")
 reshape_start = time.time()
@@ -85,7 +119,7 @@ if use_entropy:
     send_progress(20, "Refining trimap with entropy analysis...")
     
     # Convert to 0-1 probability map for entropy processing
-    trimap_entropy = entropy_trimap(trimap_alpha_raw, band_ratio=0.01, mid_band=0.2)
+    trimap_entropy = entropy_trimap(trimap_alpha_raw, band_ratio=band_ratio, mid_band=mid_band)
     trimap_alpha = trimap_entropy.astype(np.float32) / 255.0
     log_message(f"Entropy trimap applied: {np.sum(trimap_entropy == 128)} unknown pixels")
 else:

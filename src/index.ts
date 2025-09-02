@@ -46,7 +46,7 @@ function initializeWorker(): Worker {
  */
 async function processInWorker(
   combinedBuffer: ImageBuffer,
-  useEntropyTrimap: boolean = false
+  entropyTrimapParams?: { band_ratio?: number; mid_band?: number }
 ): Promise<{ alphaData: Float32Array; foregroundData: Float32Array; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const worker = initializeWorker();
@@ -89,7 +89,7 @@ async function processInWorker(
           height: combinedBuffer.height,
           channels: combinedBuffer.channels
         },
-        useEntropyTrimap
+        entropyTrimapParams
       },
     }, { transfer: [combinedBuffer.data.buffer] });
   });
@@ -172,13 +172,15 @@ export function isVerboseLogging(): boolean {
  *   - RGB channels: Original image colors
  *   - Alpha channel: Trimap where 0=background, 255=foreground, 128=unknown (to be solved)
  * @param maxDimension - Maximum dimension (width or height) for processing. Images larger than this will be downscaled for processing and then upscaled back. Default: 1024
- * @param useEntropyTrimap - If true, applies entropy-based trimap refinement to expand uncertain regions for over-confident predictions. Default: false
+ * @param entropyTrimapParams - Optional object with entropy trimap parameters. If provided, applies entropy-based trimap refinement:
+ *   - band_ratio: Minimum band width as fraction of min(H,W). Default: 0.01
+ *   - mid_band: |p-0.5| <= mid_band becomes unknown region. Default: 0.2
  * @returns ImageData containing the RGBA result image (with foreground colors and computed alpha)
  */
 export async function closedFormMatting(
   imageData: ImageData,
   maxDimension: number = 1024,
-  useEntropyTrimap: boolean = false
+  entropyTrimapParams?: { band_ratio?: number; mid_band?: number }
 ): Promise<ImageData> {
   try {
     const originalWidth = imageData.width;
@@ -235,7 +237,7 @@ export async function closedFormMatting(
     // Process in web worker
     const { alphaData, foregroundData, width, height } = await processInWorker(
       combinedBuffer,
-      useEntropyTrimap
+      entropyTrimapParams
     );
 
     // Create RGBA ImageData with foreground colors and alpha

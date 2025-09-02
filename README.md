@@ -27,27 +27,35 @@ npm install pyomatting
 ```typescript
 import { closedFormMatting } from 'pyomatting';
 
-// Perform alpha matting on ImageData with trimap in alpha channel
-const alphaImageData = await closedFormMatting(combinedImageData);
+// Basic usage with trimap in alpha channel
+const result = await closedFormMatting(imageDataWithTrimap);
+
+// With custom max dimension
+const result = await closedFormMatting(imageDataWithTrimap, 512);
 
 // With entropy trimap refinement for over-confident predictions
-const refinedResult = await closedFormMatting(combinedImageData, 1024, true);
+const result = await closedFormMatting(imageDataWithTrimap, 1024, { 
+  band_ratio: 0.015, 
+  mid_band: 0.25 
+});
 ```
 
 ## API Reference
 
 ### Core Functions
 
-#### `closedFormMatting(imageData: ImageData, maxDimension: number, useEntropyTrimap: boolean): Promise<ImageData>`
+#### `closedFormMatting(imageData: ImageData, maxDimension?: number, entropyTrimapParams?: object): Promise<ImageData>`
 
-Performs closed-form alpha matting on a single image using a trimap encoded in the alpha channel.
+Performs closed-form alpha matting on a single image with trimap encoded in alpha channel.
 
 **Parameters:**
 - `imageData`: ImageData from canvas containing the source image with trimap in alpha channel:
   - RGB channels: Original image colors
   - Alpha channel: Trimap where 0=background, 255=foreground, 128=unknown
 - `maxDimension` (optional): Maximum dimension for processing. Images larger than this will be downscaled. Default: 1024
-- `useEntropyTrimap` (optional): Apply entropy-based trimap refinement for over-confident predictions. Default: false
+- `entropyTrimapParams` (optional): Object for entropy-based trimap refinement:
+  - `band_ratio`: Minimum band width as fraction of min(H,W). Default: 0.01
+  - `mid_band`: |p-0.5| <= mid_band becomes unknown region. Default: 0.2
 
 **Returns:** ImageData containing the computed RGBA result image (with foreground colors and alpha)
 
