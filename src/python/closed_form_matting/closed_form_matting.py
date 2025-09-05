@@ -104,8 +104,8 @@ def compute_laplacian(img: np.ndarray, mask=None, eps: float =10**(-7), win_rad:
     nz_indsVal = vals.ravel()
     L = scipy.sparse.coo_matrix((nz_indsVal, (nz_indsRow, nz_indsCol)), shape=(h*w, h*w))
 
-    # rewrite L in CSR format
-    L = scipy.sparse.csr_matrix((nz_indsVal, nz_indsCol, np.arange(0, nz_indsVal.shape[0] + 1, win_size)), shape=(h*w, h*w))
+    # Convert COO to CSR format safely
+    L = L.tocsr()
     return L
 
 

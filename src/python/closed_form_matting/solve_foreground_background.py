@@ -129,4 +129,3 @@ def solve_foreground_background(image, alpha):
     foreground = solution[0, :, :, :].reshape(*image.shape)
     background = solution[1, :, :, :].reshape(*image.shape)
     return foreground, background
-
