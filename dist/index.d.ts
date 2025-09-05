@@ -1,3 +1,9 @@
+export interface PyomattingIMData {
+    data: Uint8Array;
+    width: number;
+    height: number;
+    channels: number;
+}
 /**
  * Initialize Pyodide runtime and packages in advance
  * This is optional - the runtime will be initialized automatically when needed,
@@ -25,20 +31,12 @@ export declare function setVerboseLogging(verbose: boolean): void;
  */
 export declare function isVerboseLogging(): boolean;
 /**
- * Performs closed-form alpha matting on a single image with trimap encoded in alpha channel
- * @param imageData - ImageData from canvas containing the source image with trimap in alpha channel:
- *   - RGB channels: Original image colors
- *   - Alpha channel: Trimap where 0=background, 255=foreground, 128=unknown (to be solved)
- * @param maxDimension - Maximum dimension (width or height) for processing. Images larger than this will be downscaled for processing and then upscaled back. Default: 1024
- * @param entropyTrimapParams - Optional object with entropy trimap parameters. If provided, applies entropy-based trimap refinement:
- *   - band_ratio: Minimum band width as fraction of min(H,W). Default: 0.01
- *   - mid_band: |p-0.5| <= mid_band becomes unknown region. Default: 0.2
- * @returns ImageData containing the RGBA result image (with foreground colors and computed alpha)
+ * Performs closed-form alpha matting exactly like rembg's alpha_matting_cutout function
+ * @param imageData - PyomattingIMData containing RGB image (3 channels)
+ * @param trimapData - PyomattingIMData containing trimap/mask (1 channel) - direct U^2-Net output
+ * @returns PyomattingIMData containing RGBA result (4 channels) with background removed and alpha matted
  */
-export declare function closedFormMatting(imageData: ImageData, maxDimension?: number, entropyTrimapParams?: {
-    band_ratio?: number;
-    mid_band?: number;
-}): Promise<ImageData>;
+export declare function closedFormMatting(imageData: PyomattingIMData, trimapData: PyomattingIMData): Promise<PyomattingIMData>;
 /**
  * Terminate the web worker (useful for cleanup)
  */

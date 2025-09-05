@@ -1,3 +1,30 @@
+#!/usr/bin/env python 
+"""Computes foreground and background images given source image and transparency map.
+
+This module implements foreground and background reconstruction method described in Section 7 of:
+    Levin, Anat, Dani Lischinski, and Yair Weiss. "A closed-form solution to natural image
+    matting." IEEE Transactions on Pattern Analysis and Machine Intelligence 30.2 (2008): 228-242.
+
+Please note, that the cost-function optimized by this code doesn't perfectly match Eq. 19 of the
+paper, since our implementation mimics `solveFB.m` Matlab function provided by the authors of the
+original paper (this implementation is
+availale at http://people.csail.mit.edu/alevin/matting.tar.gz).
+
+The code can be used in two ways:
+    1. By importing solve_foregound_background in your code:
+        ```
+            from solve_foregound_background import solve_foregound_background
+            ...
+            foreground, background = solve_foregound_background(image, alpha)
+        ```
+    2. From command line:
+        ```
+            ./solve_foregound_background.py image.png alpha.png foreground.png background.png
+        ```
+
+Authors: Mikhail Erofeev, Yury Gitman.
+"""
+
 import numpy as np
 import scipy.sparse
 import scipy.sparse.linalg
@@ -102,3 +129,4 @@ def solve_foreground_background(image, alpha):
     foreground = solution[0, :, :, :].reshape(*image.shape)
     background = solution[1, :, :, :].reshape(*image.shape)
     return foreground, background
+

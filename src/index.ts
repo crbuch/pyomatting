@@ -2,8 +2,8 @@
 import PyWorker from "./pyodide.worker.ts?worker&inline&module";
 import { logger, setVerbose, getVerbose } from "./logger";
 
-interface ImageBuffer {
-  data: Uint8ClampedArray;
+export interface PyomattingIMData {
+  data: Uint8Array;
   width: number;
   height: number;
   channels: number;
@@ -12,8 +12,7 @@ interface ImageBuffer {
 interface WorkerResponse {
   type: "matting_complete" | "matting_error" | "init_progress" | "processing_progress" | "init_complete";
   data?: {
-    alphaData: Float32Array;
-    foregroundData: Float32Array;
+    resultData: Uint8Array;
     width: number;
     height: number;
   };
@@ -45,9 +44,9 @@ function initializeWorker(): Worker {
  * Process matting in web worker and wait for initialization if needed
  */
 async function processInWorker(
-  combinedBuffer: ImageBuffer,
-  entropyTrimapParams?: { band_ratio?: number; mid_band?: number }
-): Promise<{ alphaData: Float32Array; foregroundData: Float32Array; width: number; height: number }> {
+  imageData: PyomattingIMData,
+  trimapData: PyomattingIMData
+): Promise<{ resultData: Uint8Array; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const worker = initializeWorker();
 
@@ -83,15 +82,10 @@ async function processInWorker(
     worker.postMessage({
       type: "process_matting",
       data: { 
-        combinedBuffer: {
-          data: combinedBuffer.data,
-          width: combinedBuffer.width,
-          height: combinedBuffer.height,
-          channels: combinedBuffer.channels
-        },
-        entropyTrimapParams
+        imageData,
+        trimapData
       },
-    }, { transfer: [combinedBuffer.data.buffer] });
+    }, { transfer: [imageData.data.buffer, trimapData.data.buffer] });
   });
 }
 
@@ -167,127 +161,38 @@ export function isVerboseLogging(): boolean {
 }
 
 /**
- * Performs closed-form alpha matting on a single image with trimap encoded in alpha channel
- * @param imageData - ImageData from canvas containing the source image with trimap in alpha channel:
- *   - RGB channels: Original image colors
- *   - Alpha channel: Trimap where 0=background, 255=foreground, 128=unknown (to be solved)
- * @param maxDimension - Maximum dimension (width or height) for processing. Images larger than this will be downscaled for processing and then upscaled back. Default: 1024
- * @param entropyTrimapParams - Optional object with entropy trimap parameters. If provided, applies entropy-based trimap refinement:
- *   - band_ratio: Minimum band width as fraction of min(H,W). Default: 0.01
- *   - mid_band: |p-0.5| <= mid_band becomes unknown region. Default: 0.2
- * @returns ImageData containing the RGBA result image (with foreground colors and computed alpha)
+ * Performs closed-form alpha matting exactly like rembg's alpha_matting_cutout function
+ * @param imageData - PyomattingIMData containing RGB image (3 channels)
+ * @param trimapData - PyomattingIMData containing trimap/mask (1 channel) - direct U^2-Net output
+ * @returns PyomattingIMData containing RGBA result (4 channels) with background removed and alpha matted
  */
 export async function closedFormMatting(
-  imageData: ImageData,
-  maxDimension: number = 1024,
-  entropyTrimapParams?: { band_ratio?: number; mid_band?: number }
-): Promise<ImageData> {
+  imageData: PyomattingIMData,
+  trimapData: PyomattingIMData
+): Promise<PyomattingIMData> {
   try {
-    // Debug logging
-    console.log('Main function: entropyTrimapParams:', entropyTrimapParams);
-    
-    const originalWidth = imageData.width;
-    const originalHeight = imageData.height;
-    const maxOriginalDimension = Math.max(originalWidth, originalHeight);
-    
-    let processedImageData = imageData;
-    let scaleFactor = 1;
-    
-    // Check if image needs downscaling
-    if (maxOriginalDimension > maxDimension) {
-      scaleFactor = maxDimension / maxOriginalDimension;
-      const scaledWidth = Math.round(originalWidth * scaleFactor);
-      const scaledHeight = Math.round(originalHeight * scaleFactor);
-      
-      logger.log(`Downscaling image from ${originalWidth}x${originalHeight} to ${scaledWidth}x${scaledHeight} (scale factor: ${scaleFactor.toFixed(3)})`);
-      
-      // Create canvas to resize the image
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d')!;
-      
-      // Set canvas to original size and draw the image
-      canvas.width = originalWidth;
-      canvas.height = originalHeight;
-      ctx.putImageData(imageData, 0, 0);
-      
-      // Create a new canvas for the scaled image
-      const scaledCanvas = document.createElement('canvas');
-      const scaledCtx = scaledCanvas.getContext('2d')!;
-      scaledCanvas.width = scaledWidth;
-      scaledCanvas.height = scaledHeight;
-      
-      // Use high-quality scaling
-      scaledCtx.imageSmoothingEnabled = true;
-      scaledCtx.imageSmoothingQuality = 'high';
-      
-      // Draw scaled image
-      scaledCtx.drawImage(canvas, 0, 0, originalWidth, originalHeight, 0, 0, scaledWidth, scaledHeight);
-      
-      // Get the scaled image data
-      processedImageData = scaledCtx.getImageData(0, 0, scaledWidth, scaledHeight);
+    // Validate inputs
+    if (imageData.channels !== 3) {
+      throw new Error("imageData must have exactly 3 channels (RGB)");
+    }
+    if (trimapData.channels !== 1) {
+      throw new Error("trimapData must have exactly 1 channel");
+    }
+    if (imageData.width !== trimapData.width || imageData.height !== trimapData.height) {
+      throw new Error("imageData and trimapData must have the same dimensions");
     }
 
-    // Create a single ImageBuffer that contains both image and trimap data
-    const combinedBuffer: ImageBuffer = {
-      data: processedImageData.data, // Direct reference, no copy
-      width: processedImageData.width,
-      height: processedImageData.height,
+    logger.log(`Processing image ${imageData.width}x${imageData.height} with closed-form alpha matting`);
+
+    // Process in web worker using rembg-compatible algorithm
+    const { resultData, width, height } = await processInWorker(imageData, trimapData);
+
+    return {
+      data: resultData,
+      width,
+      height,
       channels: 4 // RGBA
     };
-
-    logger.log(`Processing image ${processedImageData.width}x${processedImageData.height} with trimap in alpha channel using web worker`);
-
-    // Process in web worker
-    const { alphaData, foregroundData, width, height } = await processInWorker(
-      combinedBuffer,
-      entropyTrimapParams
-    );
-
-    // Create RGBA ImageData with foreground colors and alpha
-    const rgbaData = new Uint8ClampedArray(width * height * 4);
-    for (let i = 0; i < width * height; i++) {
-      const alphaValue = Math.round(alphaData[i] * 255);
-      const baseIndex = i * 4;
-      const fgBaseIndex = i * 3;
-
-      // RGB from foreground, alpha from alpha matte
-      rgbaData[baseIndex] = Math.round(foregroundData[fgBaseIndex] * 255); // R
-      rgbaData[baseIndex + 1] = Math.round(foregroundData[fgBaseIndex + 1] * 255); // G
-      rgbaData[baseIndex + 2] = Math.round(foregroundData[fgBaseIndex + 2] * 255); // B
-      rgbaData[baseIndex + 3] = alphaValue; // A
-    }
-
-    let resultImageData = new ImageData(rgbaData, width, height);
-
-    // If we downscaled, upscale the result back to original resolution
-    if (scaleFactor < 1) {
-      logger.log(`Upscaling result from ${width}x${height} back to ${originalWidth}x${originalHeight}`);
-      
-      // Create canvas with the processed result
-      const resultCanvas = document.createElement('canvas');
-      const resultCtx = resultCanvas.getContext('2d')!;
-      resultCanvas.width = width;
-      resultCanvas.height = height;
-      resultCtx.putImageData(resultImageData, 0, 0);
-      
-      // Create canvas for the final upscaled result
-      const finalCanvas = document.createElement('canvas');
-      const finalCtx = finalCanvas.getContext('2d')!;
-      finalCanvas.width = originalWidth;
-      finalCanvas.height = originalHeight;
-      
-      // Use high-quality scaling for upscaling
-      finalCtx.imageSmoothingEnabled = true;
-      finalCtx.imageSmoothingQuality = 'high';
-      
-      // Draw upscaled result
-      finalCtx.drawImage(resultCanvas, 0, 0, width, height, 0, 0, originalWidth, originalHeight);
-      
-      // Get the final upscaled image data
-      resultImageData = finalCtx.getImageData(0, 0, originalWidth, originalHeight);
-    }
-
-    return resultImageData;
   } catch (error) {
     logger.error("Error in closed-form matting:", error);
     throw error;

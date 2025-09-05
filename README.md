@@ -10,7 +10,8 @@ A TypeScript package that implements closed-form alpha matting using Pyodide to 
 - 🛠️ **Modular Architecture**: Clean separation of Python algorithms in separate files
 - ⚡ **Pre-initialization**: Optional runtime pre-loading for reduced latency
 - 🧠 **Memory Efficient**: Uses TypedArrays and transferable objects for zero-copy data transfer
-- 🎯 **Entropy Trimap**: Smart trimap refinement for over-confident neural network predictions
+- 🎯 **Morphological Trimap**: Fast trimap refinement using erosion for over-confident neural network predictions
+- ✨ **Post-Processing**: Optional mask smoothing using morphological operations and Gaussian blur
 - 📊 **Progress Callbacks**: Real-time progress updates during initialization and processing
 - 🔧 **Configurable Logging**: Verbose logging support for debugging
 - 🎨 **Interactive Demo**: Complete web interface for testing the algorithms
@@ -25,39 +26,119 @@ npm install pyomatting
 ## Quick Start
 
 ```typescript
-import { closedFormMatting } from 'pyomatting';
+import { closedFormMatting, rembgAlphaMatting } from 'pyomatting';
 
 // Basic usage with trimap in alpha channel
 const result = await closedFormMatting(imageDataWithTrimap);
 
-// With custom max dimension
-const result = await closedFormMatting(imageDataWithTrimap, 512);
-
-// With entropy trimap refinement for over-confident predictions
-const result = await closedFormMatting(imageDataWithTrimap, 1024, { 
-  band_ratio: 0.015, 
-  mid_band: 0.25 
+// Rembg-compatible usage (recommended for replacing rembg's alpha_matting_cutout)
+const result = await rembgAlphaMatting(imageDataWithMask, {
+  foregroundThreshold: 240,
+  backgroundThreshold: 10,
+  erodeStructureSize: 10
 });
+
+// With custom max dimension and trimap processing
+const result = await closedFormMatting(imageDataWithTrimap, { 
+  maxDimension: 512,
+  trimapParams: {
+    foregroundThreshold: 240,
+    backgroundThreshold: 10,
+    erodeStructureSize: 10
+  }
+});
+```
+
+## Rembg Replacement
+
+This package can directly replace rembg's `alpha_matting_cutout` function. Use the `rembgAlphaMatting` function with identical parameters:
+
+```typescript
+// Instead of rembg's alpha_matting_cutout:
+// cutout = alpha_matting_cutout(img, mask, 240, 10, 10)
+
+// Use pyomatting's rembgAlphaMatting:
+const cutout = await rembgAlphaMatting(combinedImageData, {
+  foregroundThreshold: 240,
+  backgroundThreshold: 10, 
+  erodeStructureSize: 10
+});
+```
+
+## Trimap Refinement
+
+For images with neural network predictions (like U²-Net models), the package includes trimap refinement processing that creates better unknown regions for alpha matting:
+
+```typescript
+// Apply trimap refinement to expand unknown regions
+const result = await closedFormMatting(imageData, {
+  trimapParams: {
+    foregroundThreshold: 240,    // Pixels above this are definite foreground
+    backgroundThreshold: 10,     // Pixels below this are definite background
+    erodeStructureSize: 10       // Size of erosion kernel for creating unknown regions
+  }
+});
+```
+
+**Benefits:**
+- Creates adaptive unknown bands around foreground/background boundaries
+- Handles over-confident predictions from deep learning models
+- Compatible with rembg's alpha_matting_cutout parameters
+- Kernel size directly specified in pixels for predictable results
 ```
 
 ## API Reference
 
 ### Core Functions
 
-#### `closedFormMatting(imageData: ImageData, maxDimension?: number, entropyTrimapParams?: object): Promise<ImageData>`
+#### `closedFormMatting(imageData: ImageData, options?: MattingOptions): Promise<ImageData>`
 
 Performs closed-form alpha matting on a single image with trimap encoded in alpha channel.
 
 **Parameters:**
 - `imageData`: ImageData from canvas containing the source image with trimap in alpha channel:
   - RGB channels: Original image colors
-  - Alpha channel: Trimap where 0=background, 255=foreground, 128=unknown
-- `maxDimension` (optional): Maximum dimension for processing. Images larger than this will be downscaled. Default: 1024
-- `entropyTrimapParams` (optional): Object for entropy-based trimap refinement:
-  - `band_ratio`: Minimum band width as fraction of min(H,W). Default: 0.01
-  - `mid_band`: |p-0.5| <= mid_band becomes unknown region. Default: 0.2
+  - Alpha channel: Trimap where 0=background, 255=foreground, 128=unknown (to be solved)
+- `options`: Optional configuration object:
+  - `maxDimension`: Maximum dimension for processing (default: 1024)
+  - `trimapParams`: Trimap refinement parameters for expanding unknown regions
+  - `postProcessMask`: Apply mask post-processing for smoother boundaries (default: false)
+  - `returnOnlyMask`: Debug mode - returns only alpha mask as RGB (default: false)
 
 **Returns:** ImageData containing the computed RGBA result image (with foreground colors and alpha)
+
+#### `rembgAlphaMatting(imageData: ImageData, options?: RembgOptions): Promise<ImageData>`
+
+Rembg-compatible alpha matting function that exactly replicates rembg's `alpha_matting_cutout` behavior.
+
+**Parameters:**
+- `imageData`: ImageData from canvas containing the source image with mask in alpha channel
+- `options`: Optional configuration object:
+  - `maxDimension`: Maximum dimension for processing (default: 1024)
+  - `foregroundThreshold`: Threshold for definite foreground (default: 240)
+  - `backgroundThreshold`: Threshold for definite background (default: 10)
+  - `erodeStructureSize`: Size of erosion structure (default: 10)
+  - `postProcessMask`: Apply post-processing for smooth boundaries (default: false)
+  - `returnOnlyMask`: Debug mode - return only alpha mask (default: false)
+
+**Returns:** ImageData containing the computed RGBA result image (with foreground colors and alpha)
+
+#### `TrimapParams`
+
+Interface for trimap refinement parameters:
+
+- `foregroundThreshold`: Threshold for definite foreground pixels (default: 240)
+- `backgroundThreshold`: Threshold for definite background pixels (default: 10)
+- `erodeStructureSize`: Size of erosion structure in pixels (default: 10)
+
+#### `MattingOptions`
+
+Interface for matting configuration:
+
+- `maxDimension`: Maximum dimension for processing (default: 1024)
+- `trimapParams`: Trimap refinement parameters (optional)
+- `postProcessMask`: Apply post-processing for smooth boundaries (default: false)
+- `returnOnlyMask`: Debug mode - return only alpha mask (default: false)
 
 #### `initializePyodide(): Promise<void>`
 
@@ -107,6 +188,7 @@ Terminate the web worker (useful for cleanup).
 ```typescript
 import { 
   closedFormMatting, 
+  rembgAlphaMatting,
   addProgressCallback, 
   setVerboseLogging,
   initializePyodide 
@@ -123,8 +205,8 @@ addProgressCallback((stage, progress, message) => {
 // Optional: Pre-initialize for faster first run
 await initializePyodide();
 
-// Combine image and trimap into single ImageData
-function combineImageWithTrimap(sourceImg: HTMLImageElement, trimapImg: HTMLImageElement): ImageData {
+// For rembg replacement (recommended):
+function combineImageWithMask(sourceImg: HTMLImageElement, maskImg: HTMLImageElement): ImageData {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d')!;
   
@@ -135,39 +217,68 @@ function combineImageWithTrimap(sourceImg: HTMLImageElement, trimapImg: HTMLImag
   ctx.drawImage(sourceImg, 0, 0);
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   
-  // Draw trimap to get alpha data
+  // Draw mask to get alpha data
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(trimapImg, 0, 0);
-  const trimapData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(maskImg, 0, 0);
+  const maskData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   
-  // Combine: RGB from source, Alpha from trimap
+  // Combine: RGB from source, Alpha from mask
   for (let i = 0; i < imageData.data.length; i += 4) {
-    imageData.data[i + 3] = trimapData.data[i]; // Alpha from trimap's red channel
+    imageData.data[i + 3] = maskData.data[i]; // Alpha from mask's red channel
   }
   
   return imageData;
 }
 
-// Process image
-const combinedData = combineImageWithTrimap(sourceImage, trimapImage);
-// Process images
+// Rembg-compatible processing with exact same parameters
+const combinedData = combineImageWithMask(sourceImage, maskImage);
+const result = await rembgAlphaMatting(combinedData, {
+  foregroundThreshold: 240,  // Same as rembg default
+  backgroundThreshold: 10,   // Same as rembg default  
+  erodeStructureSize: 10     // Same as rembg default
+});
+
+// With post-processing for smoother results (like rembg)
+const result = await rembgAlphaMatting(combinedData, {
+  foregroundThreshold: 240,
+  backgroundThreshold: 10,
+  erodeStructureSize: 10,
+  postProcessMask: true      // Enable post-processing
+});
+
+// For traditional trimap usage:
+function combineImageWithTrimap(sourceImg: HTMLImageElement, trimapImg: HTMLImageElement): ImageData {
+  // ... same as above but trimap has specific values: 0=BG, 255=FG, 128=unknown
+}
+
 const result = await closedFormMatting(combinedImageData);
 
-// For over-confident neural network predictions (like U^2-Net)
-const resultWithEntropy = await closedFormMatting(combinedImageData, 1024, true);
+// With trimap refinement for neural network masks
+const result = await closedFormMatting(combinedImageData, {
+  trimapParams: {
+    foregroundThreshold: 240,
+    backgroundThreshold: 10,
+    erodeStructureSize: 10
+  }
+});
 ```
 
-### Entropy Trimap Refinement
+### Morphological Trimap Refinement
 
-When working with neural networks like U^2-Net that produce over-confident predictions, the trimap may have too thin unknown regions. Enable entropy trimap processing to:
+When working with neural networks like U^2-Net that produce over-confident predictions, the trimap may have too thin unknown regions. Enable morphological trimap processing to:
 
-- **Expand uncertain regions**: Areas where the model probability is near 0.5 become unknown
-- **Add geometric bands**: Guaranteed minimum band width around foreground/background boundaries  
-- **Adaptive scaling**: Band width adapts to image size for consistent results
+- **Erode confident regions**: Morphological erosion creates unknown bands around boundaries
+- **Fast and effective**: Much faster than edge-detection based approaches
+- **Adaptive scaling**: Erosion size adapts to image dimensions for consistent results
+- **Better matting**: Creates more appropriate unknown regions for superior alpha mattes
 
 ```typescript
-// Enable entropy trimap refinement for better results with confident neural networks
-const result = await closedFormMatting(combinedImageData, 1024, true);
+// Enable morphological trimap refinement for better results with confident neural networks
+const result = await closedFormMatting(combinedImageData, 1024, {
+  band_ratio: 0.05,  // 5% erosion - creates larger unknown bands
+  mid_band: 0.2,     // Confidence threshold
+  returnOnlyTrimap: false  // Debug mode for trimap visualization
+});
 ```
 
 ## Development

@@ -2,10 +2,9 @@ import { loadPyodide, type PyodideInterface } from "pyodide";
 import { logger } from "./logger";
 
 // Import Python code as raw strings
-import laplacianCode from "./python/laplacian.py?raw";
-import mattingCode from "./python/matting.py?raw";
-import foregroundBackgroundCode from "./python/foreground_background.py?raw";
-import processMattingCode from "./python/process_matting.py?raw";
+import mainCode from "./python/main.py?raw";
+import closedFormMattingCode from "./python/closed_form_matting/closed_form_matting.py?raw";
+import solveForegroundBackgroundCode from "./python/closed_form_matting/solve_foreground_background.py?raw";
 
 let pyodideInstance: PyodideInterface | null = null;
 
@@ -58,10 +57,12 @@ async function initializePyodide(): Promise<PyodideInterface> {
       progress: { stage: "modules", message: "Initializing Pyomatting runtime...", percentage: 75 },
     });
 
-    // Load Python modules as inline strings
-    pyodideInstance.runPython(laplacianCode);
-    pyodideInstance.runPython(mattingCode);
-    pyodideInstance.runPython(foregroundBackgroundCode);
+    // Load the closed-form matting modules first
+    pyodideInstance.runPython(closedFormMattingCode);
+    pyodideInstance.runPython(solveForegroundBackgroundCode);
+    
+    // Load main processing module
+    pyodideInstance.runPython(mainCode);
 
     self.postMessage({
       type: "init_progress",
@@ -80,10 +81,21 @@ self.onmessage = async (evt) => {
         type: "init_complete",
       });
     } else if (evt.data.type === "process_matting") {
-      const { combinedBuffer, entropyTrimapParams } = evt.data.data;
+      const { imageData, trimapData } = evt.data.data;
 
-      if (!combinedBuffer) {
-        throw new Error("Combined buffer with image and trimap data is required");
+      if (!imageData || !trimapData) {
+        throw new Error("Both imageData and trimapData are required");
+      }
+
+      // Validate inputs
+      if (imageData.channels !== 3) {
+        throw new Error("imageData must have exactly 3 channels (RGB)");
+      }
+      if (trimapData.channels !== 1) {
+        throw new Error("trimapData must have exactly 1 channel");
+      }
+      if (imageData.width !== trimapData.width || imageData.height !== trimapData.height) {
+        throw new Error("imageData and trimapData must have the same dimensions");
       }
 
       const pyodide = await initializePyodide();
@@ -93,31 +105,16 @@ self.onmessage = async (evt) => {
         type: "processing_progress",
         progress: { 
           stage: "processing", 
-          message: `Starting processing of ${combinedBuffer.width}x${combinedBuffer.height} image with trimap in alpha channel...`, 
+          message: `Starting rembg-compatible alpha matting of ${imageData.width}x${imageData.height} image...`, 
           percentage: 0 
         },
       });
 
-      // Use the TypedArray directly for efficient memoryview conversion
-      pyodide.globals.set("combined_data_buffer", combinedBuffer.data);
-      pyodide.globals.set("image_width", combinedBuffer.width);
-      pyodide.globals.set("image_height", combinedBuffer.height);
-      pyodide.globals.set("image_channels", combinedBuffer.channels);
-      
-      // Set entropy trimap parameters
-      const useEntropy = entropyTrimapParams !== undefined;
-      const bandRatio = entropyTrimapParams?.band_ratio ?? 0.01;
-      const midBand = entropyTrimapParams?.mid_band ?? 0.2;
-      
-      // Debug logging
-      console.log('Worker: entropyTrimapParams:', entropyTrimapParams);
-      console.log('Worker: useEntropy:', useEntropy);
-      console.log('Worker: bandRatio:', bandRatio);
-      console.log('Worker: midBand:', midBand);
-      
-      pyodide.globals.set("use_entropy_trimap", useEntropy);
-      pyodide.globals.set("entropy_band_ratio", bandRatio);
-      pyodide.globals.set("entropy_mid_band", midBand);
+      // Pass image and trimap data to Python global variables
+      pyodide.globals.set("image_data_buffer_global", imageData.data);
+      pyodide.globals.set("trimap_data_buffer_global", trimapData.data);
+      pyodide.globals.set("image_width_global", imageData.width);
+      pyodide.globals.set("image_height_global", imageData.height);
 
       // Create a callback function that Python can call to send progress updates
       const sendProgressCallback = (percentage: number, message: string) => {
@@ -133,45 +130,32 @@ self.onmessage = async (evt) => {
       
       // Create a logging function that Python can call
       const pyLogger = (message: string) => {
-        logger.log(message);
+        logger.log("[Python] " + message);
       };
       
       pyodide.globals.set("send_progress_callback", sendProgressCallback);
       pyodide.globals.set("py_logger", pyLogger);
 
-      // Execute the matting algorithm using the inline Python code
-      pyodide.runPython(processMattingCode);
+      // Execute the main processing function which will handle the entire rembg workflow
+      pyodide.runPython(`
+# Call the main processing function directly
+process_alpha_matting()
+`);
 
       // Get the results back as TypedArrays for efficient transfer
-      const alphaResult = pyodide.globals.get("alpha_result");
-      const foregroundResult = pyodide.globals.get("foreground_result");
-      const resultWidth = pyodide.globals.get("result_width");
-      const resultHeight = pyodide.globals.get("result_height");
+      const resultData = pyodide.globals.get("result_data_global");
+      const resultWidth = pyodide.globals.get("result_width_global");
+      const resultHeight = pyodide.globals.get("result_height_global");
 
-      // Convert Python arrays to TypedArrays for efficient transfer
-      // Use try-catch for more robust error handling during conversion
-      let alphaData: Float32Array;
-      let foregroundData: Float32Array;
-      
-      try {
-        const alphaArray = alphaResult.toJs();
-        const foregroundArray = foregroundResult.toJs();
-        
-        // Create TypedArrays directly from the converted arrays
-        alphaData = alphaArray instanceof Float32Array ? alphaArray : new Float32Array(alphaArray);
-        foregroundData = foregroundArray instanceof Float32Array ? foregroundArray : new Float32Array(foregroundArray);
-      } catch (conversionError) {
-        // Fallback: convert to regular arrays first, then to TypedArrays
-        alphaData = new Float32Array(Array.from(alphaResult.toJs()));
-        foregroundData = new Float32Array(Array.from(foregroundResult.toJs()));
-      }
+      // Convert Python array to TypedArray for efficient transfer
+      const resultUint8Array = new Uint8Array(resultData.toJs());
 
       // Signal completion
       self.postMessage({
         type: "processing_progress",
         progress: { 
           stage: "processing", 
-          message: "Processing completed!", 
+          message: "Alpha matting completed!", 
           percentage: 100 
         },
       });
@@ -180,12 +164,11 @@ self.onmessage = async (evt) => {
       self.postMessage({
         type: "matting_complete",
         data: {
-          alphaData,
-          foregroundData,
+          resultData: resultUint8Array,
           width: resultWidth,
           height: resultHeight,
         },
-      }, { transfer: [alphaData.buffer, foregroundData.buffer] });
+      }, { transfer: [resultUint8Array.buffer] });
     }
   } catch (error) {
     self.postMessage({
